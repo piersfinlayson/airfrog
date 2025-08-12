@@ -65,6 +65,6 @@ Check in changes.
 Tag the version in git:
 
 ```bash
-git tag -s -a v<x.y.z> -m "Release v<x.y.z>
+git tag -s -a v<x.y.z> -m "Release v<x.y.z>"
 git push origin v<x.y.z>
 ```
