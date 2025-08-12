@@ -1,0 +1,55 @@
+# Rust
+target/
+!**/src/target
+**/*.rs.bk
+Cargo.lock  # Remove this line if building a library
+
+# ESP-specific
+*.bin
+*.elf
+*.map
+build/
+sdkconfig
+sdkconfig.old
+.espflash/
+
+# Flash dumps and logs
+flash_dump_*.bin
+serial_output.log
+monitor.log
+
+# ESP-IDF (if mixing with esp-idf)
+dependencies.lock
+managed_components/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Debug artifacts
+*.pdb
+core.*
+
+# Temporary files
+*.tmp
+*.temp
+.#*
+
+# Environment
+.env
+.env.local
+
+# Commodore build files
+*.prg
+*.d64

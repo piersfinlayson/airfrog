@@ -1,0 +1,197 @@
+/* Copyright (C) 2025 Piers Finlayson <piers@piers.rocks> */
+/* MIT License */
+
+/* Minified by build.rs */
+
+:root {
+    --bg: #1a1a1a;
+    --fg: #e0e0e0;
+    --accent: #1B86B0;
+    --border: #333;
+    --hover: #2a2a2a
+}
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0
+}
+body {
+    font: 20px/1.4 system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    padding: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+    position: relative
+}
+h1,
+h2,
+h3,
+h4 {
+    color: var(--accent);
+    margin-bottom: .5rem
+}
+h1 {
+    font-size: 1.5rem
+}
+h2 {
+    font-size: 1.2rem
+}
+h3 {
+    font-size: 1.1rem
+}
+h4 {
+    font-size: 1rem
+}
+h1:not(:first-child),
+h2:not(:first-child),
+h3:not(:first-child),
+h4:not(:first-child) {
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 1.5rem
+}
+p {
+    margin-bottom: .4rem
+}
+input,
+button,
+select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: .5rem;
+    border-radius: 4px;
+    font: inherit
+}
+button {
+    background: var(--accent);
+    cursor: pointer;
+    transition: opacity .2s
+}
+button:hover {
+    opacity: .8
+}
+input:focus,
+button:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0
+}
+th,
+td {
+    padding: .5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border)
+}
+th {
+    background: var(--hover);
+    font-weight: 600
+}
+.card {
+    background: var(--hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem 0
+}
+.status {
+    padding: .3rem .6rem;
+    border-radius: 3px;
+    font-size: .9rem;
+    font-weight: 500
+}
+.status.ok {
+    background: #0f5f77;
+    color: #87ceeb
+}
+.status.error {
+    background: #4f0d0d;
+    color: #f87171
+}
+.inline {
+    display: inline-block;
+    margin-right: .5rem
+}
+@media(max-width:600px) {
+    body {
+        padding: .5rem;
+        font-size: 18px
+    }
+}
+.logo {
+    position: absolute;
+    top: 5rem;
+    right: 2rem;
+    max-width: 150px;
+    height: auto;
+    z-index: 1000
+}
+.device-info {
+    margin: 1rem auto;
+    border: none;
+    width: fit-content;
+}
+.device-info td {
+    border: none;
+    padding: 0.25rem 0.5rem;
+}
+.label-col {
+    text-align: right;
+    width: 250px;
+}
+.device-info td:last-child {
+    text-align: left;
+    width: 500px;
+}
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.tool-link {
+    display: block;
+    padding: 1rem;
+    background: var(--accent);
+    color: var(--bg);
+    text-decoration: none;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+.tool-link:hover {
+    opacity: 0.8;
+}
+.refresh-btn {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+}
+.footer {
+    text-align: center;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 1rem;  /* was 0.9rem */
+    color: var(--fg);
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover {
+    text-decoration: underline;
+}
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+a:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}

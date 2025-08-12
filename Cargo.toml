@@ -1,0 +1,79 @@
+[workspace]
+members = [
+    "airfrog-core",
+    "airfrog-swd",
+    "airfrog-bin",
+    "airfrog-util",
+    "airfrog",
+]
+default-members = [
+    "airfrog-core",
+    "airfrog-swd",
+    "airfrog-bin",
+    "airfrog-util",
+    "airfrog",
+]
+resolver = "2"
+
+[package]
+name = "airfrog-ws"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+airfrog-core = "0.1.0"
+airfrog-swd = "0.1.0"
+airfrog-bin = "0.1.0"
+airfrog-util = "0.1.0"
+
+esp-bootloader-esp-idf = "0.1"
+esp-hal = { version = "=1.0.0-rc.0", features = [
+  "esp32c3",
+  "unstable",
+] }
+esp-alloc = "0.8.0"
+esp-backtrace = { version = "0.17.0", features = [
+  "esp32c3",
+  "exception-handler",
+  "panic-handler",
+  "println",
+] }
+esp-println = { version = "0.15", features = [ "esp32c3" ] }
+critical-section = "1.2"
+embassy-executor = { version = "0.7.0", features = [ "nightly" ] }
+embassy-sync = { version = "0.7.0" }
+embassy-time = { version = "0.4.0" }
+embassy-futures = { version = "0.1.1" }
+esp-hal-embassy = { version = "0.9", features = [ "esp32c3" ] }
+esp-wifi = { version = "0.15", features = [
+  "builtin-scheduler",
+  "esp-alloc",
+  "esp32c3",
+  "wifi",
+] }
+log = "0.4.27"
+
+rust-mqtt = { version = "0.3", default-features = false }
+static_cell = { version = "2.1.0", features = ["nightly"] }
+embassy-net = { version = "0.7.0", features = [
+  "dhcpv4",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units    = 1     # LLVM can perform better optimizations using a single thread
+debug            = 2
+debug-assertions = false
+incremental      = false
+lto              = 'fat'
+opt-level        = 'z'
+overflow-checks  = false

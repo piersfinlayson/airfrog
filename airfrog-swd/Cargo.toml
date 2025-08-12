@@ -1,0 +1,47 @@
+[package]
+name    = "airfrog-swd"
+version = "0.1.0"
+edition = "2024"
+authors = ["Piers Finlayson <piers@piers.rocks>"]
+description = "Rust native ARM SWD support"
+repository = "https://github.com/piersfinlayson/airfrog"
+readme = "../README.md"
+license = "MIT"
+keywords = ["embedded", "airfrog", "swd", "arm", "stm32"]
+categories = [
+    "embedded",
+    "hardware-support", 
+    "network-programming",
+    "development-tools",
+]
+
+[lib]
+name = "airfrog_swd"
+path = "./src/lib.rs"
+
+[dependencies]
+airfrog-core = "0.1.0"
+airfrog-bin = "0.1.0"
+
+esp-alloc = "0.8.0"
+esp-hal = { version = "=1.0.0-rc.0", features = [
+  "esp32c3",
+  "log-04",
+  "unstable",
+] }
+embassy-time = { version = "0.4.0", features = ["log"] }
+embassy-net = { version = "0.7.0", features = [
+  "dhcpv4",
+  "log",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+embedded-io = "0.6.1"
+embedded-io-async = "0.6.1"
+
+log = "0.4.27"
+
+riscv = { version = "0.14.0" }
+
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }

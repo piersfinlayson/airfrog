@@ -1,0 +1,24 @@
+[package]
+name    = "airfrog-bin"
+version = "0.1.0"
+edition = "2024"
+authors = ["Piers Finlayson <piers@piers.rocks>"]
+description = "Airfrog binary API support"
+repository = "https://github.com/piersfinlayson/airfrog"
+readme = "../README.md"
+license = "MIT"
+keywords = ["embedded", "airfrog", "swd", "arm", "stm32"]
+categories = [
+    "embedded",
+    "hardware-support", 
+    "network-programming",
+    "development-tools",
+]
+
+[lib]
+name = "airfrog_bin"
+path = "src/lib.rs"
+
+[dependencies]
+log = "0.4.27"
+serde = { version = "1.0", default-features = false, features = [ "derive", ] }

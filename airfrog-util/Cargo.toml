@@ -1,0 +1,52 @@
+[package]
+edition = "2024"
+name    = "airfrog-util"
+version = "0.1.0"
+authors = ["Piers Finlayson <piers@piers.rocks>"]
+description = "General utilities and helpers for Airfrog"
+repository = "https://github.com/piersfinlayson/airfrog"
+readme = "../README.md"
+license = "MIT"
+keywords = ["embedded", "airfrog", "swd", "arm", "stm32"]
+categories = [
+    "embedded",
+    "hardware-support", 
+    "network-programming",
+    "development-tools",
+]
+
+[lib]
+name = "airfrog_util"
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+esp-hal = { version = "=1.0.0-rc.0", features = [
+  "esp32c3",
+  "log-04",
+  "unstable",
+] }
+esp-alloc = "0.8.0"
+esp-println = { version = "0.15", features = ["esp32c3"] }
+embassy-executor = { version = "0.7.0", features = [ "nightly" ] }
+embassy-futures = { version = "0.1.1" }
+
+embassy-time = { version = "0.4.0", features = [] }
+embassy-net = { version = "0.7.0", features = [
+  "dhcpv4",
+  "log",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+embassy-sync = { version = "0.7.0" }
+esp-wifi = { version = "0.15", features = [
+  "builtin-scheduler",
+  "esp-alloc",
+  "esp32c3",
+  "wifi",
+] }
+static_cell = { version = "2.1.0", features = ["nightly"] }
+log = "0.4.27"

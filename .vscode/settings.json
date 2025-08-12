@@ -1,0 +1,14 @@
+{
+  "rust-analyzer.cargo.allTargets": false,
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": ["--", "-W", "clippy::all", "-D", "warnings"],
+  "rust-analyzer.cargo.target": "riscv32imc-unknown-none-elf",
+  "rust-analyzer.server.extraEnv": {
+    "RUST_BACKTRACE": "1",
+    "AF_STA_SSID": "test",
+    "AF_STA_PASSWORD": "test",
+    "MQTT_BROKER_IP": "1.2.3.4",
+    "AIRFROG_ID": "1"
+  },
+}

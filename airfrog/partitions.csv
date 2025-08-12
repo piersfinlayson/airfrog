@@ -1,0 +1,23 @@
+# airfrog partition table
+#
+# - config0: Primary config
+# - otadata: OTA data, used to track the state of OTA updates
+# - phy_init: PHY initialization data, used for radio configuration
+# - airfrog_f_0: First OTA firmware partition
+# - airfrog_d_0: First airfrog data partition
+# - config1: Secondary config
+# - airfrog_f_1: Second OTA firmware partition
+# - airfrog_d_1: Second airfrog data partition
+#
+# Data and spare partitions are currently unused
+#
+# Name,         Type,   SubType,  Offset,    Size,    Flags
+nvs,            data,   nvs,      0x9000,    0x4000,
+otadata,        data,   ota,      0xd000,    0x2000,
+phy_init,       data,   phy,      0xf000,    0x1000,
+airfrog_fw_0,   app,    ota_0,    0x10000,   0x180000,
+airfrog_data_0, data,   0x82,     0x190000,  0x70000,
+airfrog_conf_0, data,   0x81,     0x200000,  0x8000,
+airfrog_conf_1, data,   0x81,     0x208000,  0x8000,
+airfrog_fw_1,   app,    ota_1,    0x210000,  0x180000,
+airfrog_data_1, data,   0x82,     0x390000,  0x70000,

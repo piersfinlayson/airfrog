@@ -1,0 +1,25 @@
+[package]
+name    = "airfrog-core"
+version = "0.1.0"
+edition = "2024"
+authors = ["Piers Finlayson <piers@piers.rocks>"]
+description = "Rust native ARM debug support"
+repository = "https://github.com/piersfinlayson/airfrog"
+readme = "../README.md"
+license = "MIT"
+keywords = ["embedded", "airfrog", "swd", "arm", "stm32"]
+categories = [
+    "embedded",
+    "hardware-support", 
+    "network-programming",
+    "development-tools",
+]
+
+[lib]
+name = "airfrog_core"
+path = "./src/lib.rs"
+
+[dependencies]
+sdrr-fw-parser = { version = "0.3.0", default-features = false }
+esp-alloc = "0.8.0"
+static_assertions = "1.1"

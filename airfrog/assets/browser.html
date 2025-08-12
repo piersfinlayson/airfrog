@@ -1,0 +1,165 @@
+<!-- Copyright (C) 2025 Piers Finlayson <piers@piers.rocks> -->
+<!-- MIT Licence -->
+
+<!-- Minified by build.rs -->
+
+<div class="tabs">
+    <div class="tab active" onclick="showTab('viewer', event)">Memory Viewer</div>
+    <div class="tab" onclick="showTab('writer', event)">Memory Writer</div>
+    <div class="tab" onclick="showTab('registers', event)">DP/AP Registers</div>
+</div>
+
+<!-- Memory Viewer Tab -->
+<div id="viewer-tab">
+    <div class="card">
+        <h3>Memory Access</h3>
+        <div class="controls">
+            <div class="control-group">
+                <label>Address</label>
+                <input type="text" id="viewer-address" value="0x20000000" placeholder="0x20000000">
+            </div>
+            <div class="control-group">
+                <label>Word Count</label>
+                <input type="number" id="viewer-count" value="64" min="1" max="1024">
+            </div>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <button onclick="readMemory()">Read</button>
+        </div>
+        <div class="card">
+            <h4>Quick Addresses</h4>
+            <div class="quick-addresses">
+                <button class="quick-addr" onclick="setViewerAddress('0x20000000')">RAM Start</button>
+                <button class="quick-addr" onclick="setViewerAddress('0x08000000')">Flash Start</button>
+                <button class="quick-addr" onclick="setViewerAddress('0x40000000')">Peripherals</button>
+                <button class="quick-addr" onclick="setViewerAddress('0xE000E000')">System</button>
+            </div>
+        </div>
+        <div class="viewer-progress-section" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <div class="progress-text">0%</div>
+        </div>
+        <div id="viewer-status" class="status-message"></div>
+    </div>
+    <div class="card">
+        <h3>Results</h3>
+        <div id="viewer-results" class="results">
+            <div class="hex-display">
+                <div class="address-col">20000000:</div>
+                <div class="hex-col">Click Read to load memory data...</div>
+                <div class="ascii-col"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Memory Writer Tab -->
+<div id="writer-tab" style="display: none;">
+    <div class="card">
+        <p><strong>⚠️ Warning: Write operations can crash the target, requiring a reset.</strong></p>
+    </div>
+    <div class="card">
+        <h3>Single Word Write</h3>
+        <div class="controls">
+            <div class="control-group">
+                <label>Address</label>
+                <input type="text" id="writer-address" value="0x20000000" placeholder="0x20000000">
+            </div>
+            <div class="control-group">
+                <label>Value</label>
+                <input type="text" id="writer-value" placeholder="0x12345678">
+            </div>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <button onclick="writeWord()">Write Word</button>
+            <button onclick="readWord()">Read Word</button>
+        </div>
+        <div id="single-word-status" class="status-message"></div>
+        <div class="card">
+            <h4>Quick Addresses</h4>
+            <div class="quick-addresses">
+                <button class="quick-addr" onclick="setWriterAddress('0x20000000')">RAM Start</button>
+                <button class="quick-addr" onclick="setWriterAddress('0x08000000')">Flash Start</button>
+                <button class="quick-addr" onclick="setWriterAddress('0x40000000')">Peripherals</button>
+                <button class="quick-addr" onclick="setWriterAddress('0xE000E000')">System</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Bulk Memory Write</h3>
+        <div class="controls">
+            <div class="control-group">
+                <label>Start Address</label>
+                <input type="text" id="bulk-address" value="0x20000000" placeholder="0x20000000">
+            </div>
+            <div class="control-group">
+                <label>File Format</label>
+                <select id="file-format">
+                    <option value="binary">Binary (.bin)</option>
+                    <option value="hex">Intel HEX (.hex)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="file-controls">
+            <input type="file" id="memoryFile" accept=".bin,.hex" style="display: none;" onchange="handleMemoryFileChange(this)">
+            <button id="chooseMemoryFileBtn" onclick="document.getElementById('memoryFile').click()">Choose File</button>
+            <span id="memoryFileStatus">No file chosen</span>
+        </div>
+
+        <div class="options">
+            <label><input type="checkbox" id="verifyAfterWrite" checked> Verify after write</label>
+            <label><input type="checkbox" id="showProgress" checked> Show progress</label>
+        </div>
+
+        <div style="margin: 1rem 0;">
+            <button id="updateMemoryButton" onclick="handleMemoryUpdate()" disabled>Update Memory</button>
+            <button onclick="fillMemory()">Fill Memory</button>
+            <button onclick="clearMemory()">Clear Memory</button>
+        </div>
+
+        <div class="progress-section" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <div class="progress-text">0%</div>
+        </div>
+
+        <div id="writer-status" class="status-message"></div>
+    </div>
+</div>
+
+<!-- DP/AP Registers Tab -->
+<div id="registers-tab" style="display: none;">
+    <div class="card">
+        <p><strong>⚠️ Warning: Write operations can crash the target, requiring a reset.</strong></p>
+    </div>
+    <div class="card">
+        <h3>SWD Registers</h3>
+        <div class="controls">
+            <div class="control-group">
+                <label>Type</label>
+                <select id="reg-type">
+                    <option value="dp">Debug Port (DP)</option>
+                    <option value="ap">Access Port (AP)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Register</label>
+                <input type="text" id="register" value="0x0" placeholder="0x0">
+            </div>
+            <div class="control-group">
+                <label>AP Index</label>
+                <input type="text" id="ap-index" value="0x0" placeholder="0x0">
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <button onclick="readRegister()">Read Register</button>
+            <button onclick="writeRegister()">Write Register</button>
+        </div>
+    </div>
+</div>
