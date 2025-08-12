@@ -425,11 +425,13 @@ impl StmDeviceId {
                 _ => "unknown",
             },
             StmLine::F4x5 => match self.revision() {
+                // Same for F407/417
                 0x1000 => "A",
                 0x1001 => "Z",
-                0x1003 => "Y",
-                0x1007 => "1",
+                0x1003 => "1",
+                0x1007 => "2",
                 0x100F => "Y/4",
+                0x101F => "5/6",
                 _ => "unknown",
             },
             StmLine::F427_F437 => match self.revision() {
