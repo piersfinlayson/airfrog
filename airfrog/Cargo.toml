@@ -86,6 +86,9 @@ strum = { version = "0.27.2", default-features = false, features = ["derive"] }
 httparse = { version = "1.10.1", default-features = false }
 crc = "3.3"
 heapless = "0.8"
+leasehund = "0.2"
+edge-captive = "0.6"
+edge-nal-embassy = "0.6"
 
 [build-dependencies]
 built = "0.8"

@@ -58,15 +58,17 @@
 #![feature(impl_trait_in_assoc_type)]
 
 extern crate alloc;
+use core::net::{Ipv4Addr, SocketAddr};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
-use embassy_net::StackResources;
+use embassy_net::{StackResources, Stack};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer, with_deadline};
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, timer::timg::TimerGroup};
+use leasehund::DhcpServer;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use static_cell::make_static;
@@ -135,8 +137,8 @@ pub const NUM_SOCKETS_HTTPD: usize = 4;
 #[cfg(not(feature = "httpd"))]
 const NUM_SOCKETS_HTTPD: usize = 0;
 
-// Total number of sockets used by the application.
-const NUM_SOCKETS: usize = NUM_SOCKETS_BIN_API + NUM_SOCKETS_WIFI + NUM_SOCKETS_HTTPD;
+// Total number of sockets used by the application - add on 16 for luck.
+const NUM_SOCKETS: usize = NUM_SOCKETS_BIN_API + NUM_SOCKETS_WIFI + NUM_SOCKETS_HTTPD + 16;
 
 const WIFI_STA_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -341,12 +343,20 @@ async fn main(spawner: Spawner) -> ! {
             .await;
         }
         if started_ap {
+            let ap_stack = wifi.net_stack(WifiType::Ap)
+                .expect("AP stack should be available if AP is started");
             http::start(
-                wifi.net_stack(WifiType::Ap),
+                Some(ap_stack),
                 target_request_sender,
                 &spawner,
             )
             .await;
+
+            // Start the DHCP server
+            spawner.must_spawn(dhcp_task(ap_stack));
+
+            // And the DNS server
+            spawner.must_spawn(captive_dns_task(ap_stack));
         }
     }
 
@@ -367,6 +377,71 @@ async fn main(spawner: Spawner) -> ! {
                 Timer::after(Duration::from_secs(1)).await;
                 esp_hal::system::software_reset();
             }
+        }
+    }
+}
+
+pub async fn create_dhcp_server() -> DhcpServer<32, 4> {
+    let config_guard = CONFIG.get().await.lock().await;
+    let net_cfg = &config_guard.net;
+    
+    let server_ip = Ipv4Addr::from(net_cfg.ap_v4_ip());
+    let subnet_mask = Ipv4Addr::from(net_cfg.ap_v4_netmask());
+    
+    // Calculate pool range within the AP subnet
+    let ap_ip = net_cfg.ap_v4_ip();
+    let pool_start = Ipv4Addr::new(ap_ip[0], ap_ip[1], ap_ip[2], 100);
+    let pool_end = Ipv4Addr::new(ap_ip[0], ap_ip[1], ap_ip[2], 200);
+    
+    DhcpServer::new_with_dns(
+        server_ip,
+        subnet_mask,
+        server_ip,
+        server_ip,
+        pool_start,
+        pool_end,
+    )
+}
+
+#[embassy_executor::task]
+async fn dhcp_task(stack: Stack<'static>) -> ! {
+    info!("Exec:  Started AP DHCP server");
+    let mut dhcp_server = create_dhcp_server().await;
+    dhcp_server.run(stack).await
+}
+
+#[embassy_executor::task]
+async fn captive_dns_task(stack: Stack<'static>) -> ! {
+    info!("Exec:  Started AP captive DNS server");
+    let mut tx_buf = [0u8; 256];
+    let mut rx_buf = [0u8; 256];
+    
+    let ap_ip = {
+        let config_guard = CONFIG.get().await.lock().await;
+        let ip_bytes = config_guard.net.ap_v4_ip();
+        Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3])
+    };
+    
+    // Bind to all interfaces
+    let local_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 53);
+    let ttl = Duration::from_secs(300);
+
+    let udp_buffers = edge_nal_embassy::UdpBuffers::<1, 256, 256, 1>::new();
+    let udp = edge_nal_embassy::Udp::new(stack, &udp_buffers);
+    
+    loop {
+        debug!("Debug: Starting captive DNS server on IP: {ap_ip:?}");
+        if let Err(e) = edge_captive::io::run(
+            &udp,
+            local_addr,
+            &mut tx_buf,
+            &mut rx_buf,
+            ap_ip,
+            ttl.into(),
+        ).await {
+            // Handle error, maybe log and retry
+            warn!("Error: Error in captive DNS task: {e:?}");
+            embassy_time::Timer::after(Duration::from_secs(1)).await;
         }
     }
 }
