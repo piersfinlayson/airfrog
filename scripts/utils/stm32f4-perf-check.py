@@ -634,7 +634,6 @@ def main():
         total_cycles = 0
         total_cycles_per_sec = 0
         counter = 0
-        last_elapse = 0
         total_rom_bytes_per_sec = 0
         
         while True:
@@ -661,7 +660,6 @@ def main():
                 
                 elapsed = time.time() - start_time
                 
-                last_elapse = elapsed
                 print(f"{elapsed:6.1f} "
                     f"{metrics['delta_cycles']:10d} "
                     f"{current_counters['lsu']:6d} "
