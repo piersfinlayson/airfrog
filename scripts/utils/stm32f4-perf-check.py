@@ -545,6 +545,23 @@ def configure_dwt():
     write_memory(DWT_LSUCNT_ADDR, 0)
     write_memory(DWT_FOLDCNT_ADDR, 0)
 
+def check_wraps(current, previous):
+    """Return string with * for wrapped counters"""
+    if previous is None:
+        return ""
+    
+    wraps = ""
+    if (current['cpi_extra'] & 0xFF) < (previous['cpi_extra'] & 0xFF):
+        wraps += "*"
+    if (current['lsu'] & 0xFF) < (previous['lsu'] & 0xFF):
+        wraps += "*"
+    if (current['folded'] & 0xFF) < (previous['folded'] & 0xFF):
+        wraps += "*"
+    if (current['exception'] & 0xFF) < (previous['exception'] & 0xFF):
+        wraps += "*"
+    
+    return wraps
+
 def setup_dwt():
     """Initialize DWT performance counters"""
     print("Setting up DWT performance counters...")
@@ -569,23 +586,12 @@ def calculate_metrics(current, previous):
         return {}
     
     delta_cycles = current['cycles'] - previous['cycles']
-    delta_cpi_extra = current['cpi_extra'] - previous['cpi_extra']
     
-    if delta_cycles == 0:
-        return {'cpi': 0, 'efficiency': 0}
-    
-    # CPI = (total cycles) / (instructions executed)
-    # Since DWT_CPICNT counts EXTRA cycles, instructions = cycles - cpi_extra
-    instructions = delta_cycles - delta_cpi_extra
-    cpi = delta_cycles / max(instructions, 1)  # Avoid divide by zero
-    
-    # Efficiency = instructions / cycles (higher is better)
-    efficiency = instructions / delta_cycles if delta_cycles > 0 else 0
+    # Handle 32-bit counter overflow
+    if delta_cycles < 0:
+        delta_cycles += (1 << 32)  # Add 2^32 to correct for wraparound
     
     return {
-        'cpi': cpi,
-        'efficiency': efficiency * 100,  # As percentage
-        'instructions': instructions,
         'delta_cycles': delta_cycles
     }
 
@@ -612,42 +618,50 @@ def main():
         setup_dwt()
         
         print("Monitoring DWT counters (Ctrl+C to stop)...")
-        print("=" * 90)
-        print(f"{'Time':>8} {'Cycles':>10} {'CPI':>6} {'Eff%':>10} {'Inst':>9} {'LSU':>9} {'Fold':>6} {'Exc':>6} {'Cycles/s':>10}")
-        print("=" * 90)
+        print("=" * 70)
+        print(f"{'Time':>8} {'Cycles':>10} {'LSU':>6} {'Fold':>6} {'Exc':>6} {'Cycles/s':>10} {'CPS_avg':>8}")
+        print("=" * 70)
         
         previous_counters = None
+        previous_time = None
         start_time = time.time()
         
         total_cycles = 0
-        cycles_per_second = 0
+        total_cycles_per_sec = 0
         counter = 0
+        last_elapse = 0
         
         while True:
+            cycle_read_time = time.time()
             current_counters = read_dwt_counters()
+            
             metrics = calculate_metrics(current_counters, previous_counters)
             
-            elapsed = int(time.time() - start_time)
-            
-            if metrics:  # Skip first iteration (no previous data)
+            if metrics:
+                # Calculate timing
+                actual_interval = cycle_read_time - previous_time
+                cycles_per_second = metrics['delta_cycles'] / actual_interval
+                
+                # Update rolling averages
                 counter += 1
                 total_cycles += metrics['delta_cycles']
-                cycles_per_second = total_cycles / counter
                 
-                print(f"{elapsed:8d} "
-                      f"{metrics['delta_cycles']:10d} "
-                      f"{metrics['cpi']:8.7f} "
-                      f"{metrics['efficiency']:9.5f} "
-                      f"{metrics['instructions']:8.0f} "
-                      f"{current_counters['lsu']:6d} "
-                      f"{current_counters['folded']:6d} "
-                      f"{current_counters['exception']:6d} "
-                      f"{cycles_per_second:11.0f}")
-            
+                total_cycles_per_sec += cycles_per_second
+                cycles_per_sec_average = total_cycles_per_sec / counter
+                
+                elapsed = time.time() - start_time
+                
+                last_elapse = elapsed
+                print(f"{elapsed:6.1f} "
+                    f"{metrics['delta_cycles']:10d} "
+                    f"{current_counters['lsu']:6d} "
+                    f"{current_counters['folded']:6d} "
+                    f"{current_counters['exception']:6d} "
+                    f"{cycles_per_second:11.0f} "
+                    f"{cycles_per_sec_average:8.0f}")
             
             previous_counters = current_counters.copy()
-
-            time.sleep(1)
+            previous_time = cycle_read_time
             
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")
