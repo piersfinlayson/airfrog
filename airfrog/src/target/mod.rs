@@ -1076,6 +1076,10 @@ impl<'a> Reader for &mut Target<'a> {
         buf.copy_from_slice(&bytes[offset..offset + buf.len()]);
         Ok(())
     }
+
+    fn update_base_address(&mut self, _new_base: u32) {
+        // No-op as Target does not have a concept of "base address"
+    }
 }
 
 #[cfg(any(feature = "www", feature = "rest"))]

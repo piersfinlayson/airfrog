@@ -73,7 +73,7 @@ dependencies = [
  "minify-html",
  "minify-js",
  "riscv 0.14.0",
- "sdrr-fw-parser",
+ "sdrr-fw-parser 0.4.0",
  "serde",
  "serde_json",
  "static_assertions",
@@ -104,7 +104,7 @@ name = "airfrog-core"
 version = "0.1.0"
 dependencies = [
  "esp-alloc",
- "sdrr-fw-parser",
+ "sdrr-fw-parser 0.3.0",
  "static_assertions",
 ]
 
@@ -115,7 +115,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c25d2480e21016f5d99fdd2a747b3c81c4e766dc9f21a151eb2183c9cc37bfd"
 dependencies = [
  "esp-alloc",
- "sdrr-fw-parser",
+ "sdrr-fw-parser 0.3.0",
  "static_assertions",
 ]
 
@@ -2291,6 +2291,17 @@ name = "sdrr-fw-parser"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0916a9da5d5e77a044fb569fc3773d14ca3e05f84b18e84aff7f54246d0b951"
+dependencies = [
+ "deku",
+ "esp-println",
+ "log",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "sdrr-fw-parser"
+version = "0.4.0"
 dependencies = [
  "deku",
  "esp-println",
