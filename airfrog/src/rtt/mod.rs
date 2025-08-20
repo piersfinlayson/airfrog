@@ -631,7 +631,7 @@ pub async fn rtt_task(
 
         // Handle the command if there is one
         if let Some((command, sender)) = command {
-            debug!("Info:  Handle RTT command {command:?}");
+            trace!("Info:  Handle RTT command {command:?}");
             rtt.handle_command(command, sender).await;
         }
     }

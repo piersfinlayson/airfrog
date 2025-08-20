@@ -96,3 +96,8 @@ csv = "1.3"
 jiff = { version = "0.2.13", default-features = false, features = ["std"] }
 minify-html = "0.16"
 minify-js = "0.6"
+swc_ecma_minifier = "30"
+swc_ecma_parser = "23"
+swc_common = "14"
+swc_ecma_codegen = "17"
+swc_ecma_ast = "15"

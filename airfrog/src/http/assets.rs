@@ -24,7 +24,7 @@ pub(crate) const LOGO_PATH: &str = concat!("/static/logo.", env!("CARGO_PKG_VERS
 
 /// Airfrog CSS
 pub(crate) const CSS_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/style.css"));
-pub(crate) const CSS_PATH: &str = concat!("/static/style.", env!("CARGO_PKG_VERSION"), "-ab.css");
+pub(crate) const CSS_PATH: &str = concat!("/static/style.", env!("CARGO_PKG_VERSION"), "-ac.css");
 
 /// Browser HTML
 pub(crate) const BROWSER_HTML_CONTENT: &[u8] =
@@ -53,7 +53,16 @@ pub(crate) const MEMORY_CSS_PATH: &str =
 pub(crate) const FOOTER_HTML_CONTENT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/footer.html"));
 pub(crate) const FOOTER_HTML_PATH: &str =
-    concat!("/static/footer.", env!("CARGO_PKG_VERSION"), "-a.html");
+    concat!("/static/footer.", env!("CARGO_PKG_VERSION"), "-c.html");
+
+/// RTT HTML
+pub(crate) const RTT_HTML_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rtt.html"));
+pub(crate) const RTT_HTML_PATH: &str =
+    concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-e.html");
+
+/// RTT CSS
+pub(crate) const RTT_JS_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rtt.js"));
+pub(crate) const RTT_JS_PATH: &str = concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-c.js");
 
 // Standard static file cache header
 const CACHE_YEAR: Header = Header {
@@ -109,9 +118,21 @@ pub(crate) const FOOTER_HTML: StaticFile = StaticFile {
     content: FOOTER_HTML_CONTENT,
     headers: &[CACHE_YEAR],
 };
+pub(crate) const RTT_HTML: StaticFile = StaticFile {
+    path: RTT_HTML_PATH,
+    content_type: ContentType::Html,
+    content: RTT_HTML_CONTENT,
+    headers: &[CACHE_YEAR],
+};
+pub(crate) const RTT_JS: StaticFile = StaticFile {
+    path: RTT_JS_PATH,
+    content_type: ContentType::Css,
+    content: RTT_JS_CONTENT,
+    headers: &[CACHE_YEAR],
+};
 
 /// All of the static files used by airfrog
-pub(crate) const STATIC_FILES: [StaticFile; 8] = [
+pub(crate) const STATIC_FILES: [StaticFile; 10] = [
     LOGO,
     FAVICON,
     CSS,
@@ -120,4 +141,6 @@ pub(crate) const STATIC_FILES: [StaticFile; 8] = [
     MEMORY_JS,
     MEMORY_CSS,
     FOOTER_HTML,
+    RTT_HTML,
+    RTT_JS,
 ];

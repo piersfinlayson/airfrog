@@ -25,7 +25,7 @@ use crate::device::DEVICE;
 use crate::http::assets::{FAVICON, STATIC_FILES};
 use crate::http::html::{
     html_summary, page_dashboard, page_info, page_settings, page_target_browser,
-    page_target_firmware, page_target_update,
+    page_target_firmware, page_target_rtt, page_target_update,
 };
 use crate::http::json::parse_json_body;
 use crate::http::{
@@ -277,6 +277,7 @@ impl Server {
                 (Method::Get, "/target_update") => {
                     Response::html_ok(path, self.handle_target_update().await)
                 }
+                (Method::Get, "/rtt") => Response::html_ok(path, self.handle_www_rtt().await),
                 (Method::Get, "/info") => Response::html_ok(path, self.handle_info().await),
                 (Method::Get, "/settings") => Response::html_ok(path, self.handle_settings().await),
                 _ => return Response::redirect(path, "/www/"),
@@ -370,6 +371,10 @@ impl Server {
 
     async fn handle_target_update(&self) -> HtmlContent {
         page_target_update(self.get_summary_info(true).await)
+    }
+
+    async fn handle_www_rtt(&self) -> HtmlContent {
+        page_target_rtt(self.get_summary_info(true).await)
     }
 
     async fn handle_info(&self) -> HtmlContent {
@@ -623,7 +628,7 @@ async fn task(id: usize, stack: embassy_net::Stack<'static>, server: &'static mu
         let _ = loop {
             match server.handle_request(&mut socket).await {
                 Ok(rsp) => {
-                    debug!("httpd: Task {id} Response {rsp}");
+                    trace!("httpd: Task {id} Response {rsp}");
                     if let Err(e) = rsp.write_to(&mut socket).await {
                         // Write failed - close the connection
                         break e.into();

@@ -16,7 +16,7 @@ use crate::device::Device;
 use crate::firmware::{JsonToHtml, JsonToHtmlers};
 use crate::http::assets::{
     BROWSER_HTML_PATH, CONFIG_UPDATE_JS_PATH, CSS_PATH, FAVICON_PATH, FOOTER_HTML_PATH, LOGO_PATH,
-    MEMORY_CSS_PATH, MEMORY_JS_PATH,
+    MEMORY_CSS_PATH, MEMORY_JS_PATH, RTT_HTML_PATH, RTT_JS_PATH,
 };
 use crate::target::{Response, Settings, Status};
 use crate::{
@@ -153,6 +153,31 @@ pub(crate) fn page_dashboard(summary: String) -> HtmlContent {
 <h1>Airfrog Dashboard</h1>
 {summary}
 "#
+    );
+    HtmlContent::new(body)
+}
+
+/// Generate the HTML for the RTT page
+pub(crate) fn page_target_rtt(summary: String) -> HtmlContent {
+    let body = format!(
+        r#"
+<h1>Target Logging</h1>
+{summary}
+<link rel="stylesheet" href="{MEMORY_CSS_PATH}">
+<div id="loading-card" class="card">
+  Loading Real Time Trace...
+</div>
+<div id="content-placeholder" style="display: none;"></div>
+<script>
+fetch('{RTT_HTML_PATH}')
+  .then(r => r.text())
+  .then(html => {{
+    document.getElementById('content-placeholder').innerHTML = html;
+    document.getElementById('loading-card').style.display = 'none';
+    document.getElementById('content-placeholder').style.display = 'block';
+  }});
+</script>
+<script src="{RTT_JS_PATH}"></script>"#
     );
     HtmlContent::new(body)
 }

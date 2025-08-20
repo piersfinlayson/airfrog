@@ -324,6 +324,15 @@ impl JsonToHtml for JsonToHtmler {
                 "<p><strong>ROM table size:</strong> {} bytes</p>",
                 ram_info.rom_table_size
             ));
+            if let Some(fw_info) = &fw_info
+                && fw_info.boot_logging_enabled
+                && let Some(extra_info) = &fw_info.extra_info
+            {
+                html.push_str(&format!(
+                    "<p><strong>RTT Control Block:</strong> {:#010X}</p>",
+                    extra_info.rtt_ptr
+                ));
+            }
         } else {
             html.push_str("<p><strong>Error:</strong> No information available from RAM</p>");
         }
@@ -469,7 +478,7 @@ impl JsonToHtml for JsonToHtmler {
                 html.push_str("<h3>Data pin mapping:</h3>");
                 for (i, &pin_num) in pins.data.iter().enumerate() {
                     if pin_num != 255 {
-                        html.push_str(&format!("<p>D{i}: P{}{pin_num}</p>", pins.data_port));
+                        html.push_str(&format!("<p>D{i}: P{}:{pin_num}</p>", pins.data_port));
                     }
                 }
                 html.push_str("</div>");
@@ -479,7 +488,7 @@ impl JsonToHtml for JsonToHtmler {
                 html.push_str("<h3>Address pin mapping:</h3>");
                 for (i, &pin_num) in pins.addr.iter().enumerate() {
                     if pin_num != 255 {
-                        html.push_str(&format!("<p>A{i}: P{}{pin_num}</p>", pins.addr_port));
+                        html.push_str(&format!("<p>A{i}: P{}:{pin_num}</p>", pins.addr_port));
                     }
                 }
                 html.push_str("</div>");
@@ -499,10 +508,11 @@ impl JsonToHtml for JsonToHtmler {
                     (pins.x1, "Multi X1"),
                     (pins.x2, "Multi X2"),
                 ];
+                html.push_str(&format!("<p>X1/2 jumper pull: {}</p>", pins.x_jumper_pull));
 
                 for (pin_num, label) in &cs_pins {
                     if *pin_num != 255 {
-                        html.push_str(&format!("<p>{label}: P{}{pin_num}</p>", pins.cs_port));
+                        html.push_str(&format!("<p>{label}: P{}:{pin_num}</p>", pins.cs_port));
                     }
                 }
                 html.push_str("</div>");
@@ -510,12 +520,18 @@ impl JsonToHtml for JsonToHtmler {
                 // Image select pins
                 html.push_str("<div class=\"card\">");
                 html.push_str("<h3>Image select pins:</h3>");
-                let sel_pins = [pins.sel0, pins.sel1, pins.sel2, pins.sel3];
+                let sel_pins = [
+                    pins.sel0, pins.sel1, pins.sel2, pins.sel3, pins.sel4, pins.sel5, pins.sel6,
+                ];
                 for (i, pin_num) in sel_pins.iter().enumerate() {
                     if *pin_num != 255 {
-                        html.push_str(&format!("<p>SEL{i}: P{}{pin_num}</p>", pins.sel_port));
+                        html.push_str(&format!("<p>SEL{i}: P{}:{pin_num}</p>", pins.sel_port));
                     }
                 }
+                html.push_str(&format!(
+                    "<p>Select jumper pull: {}</p>",
+                    pins.sel_jumper_pull
+                ));
                 html.push_str("</div>");
 
                 // Status LED pin
@@ -524,7 +540,10 @@ impl JsonToHtml for JsonToHtmler {
                 if pins.status_port.to_string() == "None" {
                     html.push_str("<p>Pin: None</p>");
                 } else if pins.status != 255 {
-                    html.push_str(&format!("<p>Pin: P{}{}</p>", pins.status_port, pins.status));
+                    html.push_str(&format!(
+                        "<p>Pin: P{}:{}</p>",
+                        pins.status_port, pins.status
+                    ));
                 }
                 html.push_str("</div>");
             }
