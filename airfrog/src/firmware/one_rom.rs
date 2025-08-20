@@ -508,13 +508,19 @@ impl JsonToHtml for JsonToHtmler {
                     (pins.x1, "Multi X1"),
                     (pins.x2, "Multi X2"),
                 ];
-                html.push_str(&format!("<p>X1/2 jumper pull: {}</p>", pins.x_jumper_pull));
 
                 for (pin_num, label) in &cs_pins {
                     if *pin_num != 255 {
                         html.push_str(&format!("<p>{label}: P{}:{pin_num}</p>", pins.cs_port));
                     }
                 }
+                if pins.x1 != 255 || pins.x2 != 255 {
+                    html.push_str(&format!(
+                        "<p>Multi X1/X2 jumper pull: {}</p>",
+                        pins.x_jumper_pull
+                    ));
+                }
+                html.push_str(&format!("<p>X1/2 jumper pull: {}</p>", pins.x_jumper_pull));
                 html.push_str("</div>");
 
                 // Image select pins
