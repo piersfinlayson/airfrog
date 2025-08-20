@@ -2,7 +2,7 @@
 //
 // MIT License
 
-//! airfrog - SDRR Firmware handling
+//! airfrog - One ROM Firmware handling
 
 use alloc::boxed::Box;
 use alloc::format;
@@ -23,7 +23,7 @@ pub struct SdrrHandlerInfo;
 impl FwHandlerInfo for SdrrHandlerInfo {
     /// Returns the name/identifier of this firmware type
     fn name() -> &'static str {
-        "Software Defined Retro ROM"
+        "One ROM"
     }
 
     /// Returns whether this handler supports the given MCU
@@ -174,7 +174,7 @@ impl JsonToHtml for JsonToHtmler {
         let mut html = String::with_capacity(1024);
 
         let item = "Firmware";
-        let output = "Software Defined Retro ROM";
+        let output = "One ROM";
         self.push_table_row(item, output, &mut html);
 
         let item = "Version";
@@ -244,7 +244,7 @@ impl JsonToHtml for JsonToHtmler {
 
         // Core Firmware Properties
         html.push_str("<div class=\"card\">");
-        html.push_str("<h2>Software Defined Retro ROM</h2>");
+        html.push_str("<h2>One ROM</h2>");
 
         html.push_str("<h3>Core Firmware Properties</h3>");
 

@@ -61,7 +61,7 @@ extern crate alloc;
 use core::net::{Ipv4Addr, SocketAddr};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
-use embassy_net::{StackResources, Stack};
+use embassy_net::{Stack, StackResources};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer, with_deadline};
@@ -82,6 +82,7 @@ mod firmware;
 mod flash;
 mod http;
 mod macros;
+mod rtt;
 mod target;
 
 use config::{CONFIG, NetMode};
@@ -343,14 +344,10 @@ async fn main(spawner: Spawner) -> ! {
             .await;
         }
         if started_ap {
-            let ap_stack = wifi.net_stack(WifiType::Ap)
+            let ap_stack = wifi
+                .net_stack(WifiType::Ap)
                 .expect("AP stack should be available if AP is started");
-            http::start(
-                Some(ap_stack),
-                target_request_sender,
-                &spawner,
-            )
-            .await;
+            http::start(Some(ap_stack), target_request_sender, &spawner).await;
 
             // Start the DHCP server
             spawner.must_spawn(dhcp_task(ap_stack));
@@ -359,6 +356,9 @@ async fn main(spawner: Spawner) -> ! {
             spawner.must_spawn(captive_dns_task(ap_stack));
         }
     }
+
+    // Start the RTT task
+    spawner.must_spawn(rtt::rtt_task(target_request_sender));
 
     // The main loop now turns into a flash storage task, that waits for
     // signals to store config and/or flash a new OTA image.
@@ -384,15 +384,15 @@ async fn main(spawner: Spawner) -> ! {
 pub async fn create_dhcp_server() -> DhcpServer<32, 4> {
     let config_guard = CONFIG.get().await.lock().await;
     let net_cfg = &config_guard.net;
-    
+
     let server_ip = Ipv4Addr::from(net_cfg.ap_v4_ip());
     let subnet_mask = Ipv4Addr::from(net_cfg.ap_v4_netmask());
-    
+
     // Calculate pool range within the AP subnet
     let ap_ip = net_cfg.ap_v4_ip();
     let pool_start = Ipv4Addr::new(ap_ip[0], ap_ip[1], ap_ip[2], 100);
     let pool_end = Ipv4Addr::new(ap_ip[0], ap_ip[1], ap_ip[2], 200);
-    
+
     DhcpServer::new_with_dns(
         server_ip,
         subnet_mask,
@@ -415,20 +415,20 @@ async fn captive_dns_task(stack: Stack<'static>) -> ! {
     info!("Exec:  Started AP captive DNS server");
     let mut tx_buf = [0u8; 256];
     let mut rx_buf = [0u8; 256];
-    
+
     let ap_ip = {
         let config_guard = CONFIG.get().await.lock().await;
         let ip_bytes = config_guard.net.ap_v4_ip();
         Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3])
     };
-    
+
     // Bind to all interfaces
     let local_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 53);
     let ttl = Duration::from_secs(300);
 
     let udp_buffers = edge_nal_embassy::UdpBuffers::<1, 256, 256, 1>::new();
     let udp = edge_nal_embassy::Udp::new(stack, &udp_buffers);
-    
+
     loop {
         debug!("Debug: Starting captive DNS server on IP: {ap_ip:?}");
         if let Err(e) = edge_captive::io::run(
@@ -438,7 +438,9 @@ async fn captive_dns_task(stack: Stack<'static>) -> ! {
             &mut rx_buf,
             ap_ip,
             ttl.into(),
-        ).await {
+        )
+        .await
+        {
             // Handle error, maybe log and retry
             warn!("Error: Error in captive DNS task: {e:?}");
             embassy_time::Timer::after(Duration::from_secs(1)).await;

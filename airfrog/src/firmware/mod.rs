@@ -6,12 +6,12 @@
 //!
 //! This module contains firmware handling routines for different types of
 //! firmware supported by airfrog:
-//! - SDRR - [Software Defined Retro ROM](https://piers.rocks/u/sdrr)
+//! - [One ROM](https://piers.rocks/u/one)
 //!
 //! These routines allow airfrog to load, parse and report information about
 //! the firmware on the device airfrog is attached to.
 
-pub(crate) mod sdrr;
+pub(crate) mod one_rom;
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -30,7 +30,7 @@ pub(crate) const AF_FW_TYPE_KEY: &str = "_af_fw_type";
 #[derive(EnumIter)]
 pub enum JsonToHtmlers {
     /// SDRR firmware JSON to HTML formatter
-    Sdrr(sdrr::JsonToHtmler),
+    Sdrr(one_rom::JsonToHtmler),
 
     /// Default formatter
     Default(DefaultFormatter), // Is last

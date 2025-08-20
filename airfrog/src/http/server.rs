@@ -4,12 +4,14 @@
 
 //! airfrog - Web server implementation
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
+use alloc::vec::Vec;
 use embassy_executor::Spawner;
 use embassy_net::{Stack, tcp::TcpSocket};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Sender;
+use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::signal::Signal;
 use embassy_time::with_timeout;
 #[allow(unused_imports)]
@@ -31,6 +33,7 @@ use crate::http::{
     HTTPD_TASK_TCP_RX_BUF_SIZE, HTTPD_TASK_TCP_TX_BUF_SIZE, ROUTER_TIMEOUT, WEB_TASK_POOL_SIZE,
 };
 use crate::http::{Header, HtmlContent, Method, Response, ResponseContent, Rest, StatusCode};
+use crate::rtt::{Command as RttCommand, Error as RttError, Response as RttResponse, rtt_command};
 use crate::target::{
     Command, REQUEST_CHANNEL_SIZE, Request as TargetRequest, Response as TargetResponse,
 };
@@ -40,6 +43,7 @@ use crate::{AirfrogError, ErrorKind, REBOOT_SIGNAL};
 struct Server {
     target_sender: Sender<'static, CriticalSectionRawMutex, TargetRequest, REQUEST_CHANNEL_SIZE>,
     response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+    rtt_rsp_ch: &'static Channel<CriticalSectionRawMutex, Result<RttResponse, RttError>, 1>,
     header_buf: &'static mut [u8; HTTPD_HEADER_BUF_SIZE],
     body_buf: &'static mut [u8; HTTPD_BODY_BUF_SIZE],
 }
@@ -53,12 +57,14 @@ impl Server {
             REQUEST_CHANNEL_SIZE,
         >,
         response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+        rtt_rsp_ch: &'static Channel<CriticalSectionRawMutex, Result<RttResponse, RttError>, 1>,
         header_buf: &'static mut [u8; HTTPD_HEADER_BUF_SIZE],
         body_buf: &'static mut [u8; HTTPD_BODY_BUF_SIZE],
     ) -> Self {
         Self {
             target_sender,
             response_signal,
+            rtt_rsp_ch,
             header_buf,
             body_buf,
         }
@@ -296,22 +302,17 @@ impl Server {
                     .rest_config_net(response_format, method, raw_path, body.map(String::from))
                     .await;
             } else if let Some(raw_path) = api_path.strip_prefix("/reboot") {
-                if raw_path.is_empty() && method == Method::Post {
-                    info!("Info:  Received /api/reboot POST request");
-                    REBOOT_SIGNAL.signal(());
-                    let mut response = Response::json(path, "{}", StatusCode::Ok);
-                    response.headers = Some(vec![Header {
-                        name: "Connection",
-                        value: "close",
-                    }]);
-                    return response;
-                } else {
-                    return Response::status_code(
+                return self.handle_reboot(response_format, path, raw_path, method);
+            } else if let Some(raw_path) = api_path.strip_prefix("/rtt") {
+                return self
+                    .handle_rtt(
                         response_format,
-                        Some(path),
-                        StatusCode::NotFound,
-                    );
-                }
+                        path,
+                        raw_path,
+                        method,
+                        body.map(String::from),
+                    )
+                    .await;
             } else {
                 return Response::status_code(response_format, Some(path), StatusCode::NotFound);
             };
@@ -381,6 +382,69 @@ impl Server {
     async fn handle_settings(&self) -> HtmlContent {
         let response = self.send_command(Command::FirmwareInfo).await;
         page_settings(response).await
+    }
+
+    async fn handle_rtt(
+        &self,
+        response_format: Option<ContentType>,
+        path: &str,
+        raw_path: &str,
+        method: Method,
+        _body: Option<String>,
+    ) -> Response {
+        match (method, raw_path) {
+            (Method::Get, "/data") => {
+                // Return all of the receive RTT data
+                let cmd = RttCommand::Read { max: 256 };
+                rtt_command(cmd, self.rtt_rsp_ch.sender()).await;
+                match self.rtt_rsp_ch.receiver().receive().await {
+                    Ok(rtt_rsp) => match rtt_rsp {
+                        RttResponse::Data { data } => {
+                            let hex_data: Vec<String> =
+                                data.iter().map(|&b| format!("0x{:02X}", b)).collect();
+                            let response_data = serde_json::json!({"data": hex_data});
+                            Response::json(path, response_data, StatusCode::Ok)
+                        }
+
+                        _ => Response::status_code(
+                            response_format,
+                            Some(path),
+                            StatusCode::InternalServerError,
+                        ),
+                    },
+                    Err(e) => {
+                        error!("Failed to get RTT data: {e:?}");
+                        Response::status_code(
+                            response_format,
+                            Some(path),
+                            StatusCode::InternalServerError,
+                        )
+                    }
+                }
+            }
+            _ => Response::not_found(response_format, path),
+        }
+    }
+
+    fn handle_reboot(
+        &self,
+        response_format: Option<ContentType>,
+        path: &str,
+        raw_path: &str,
+        method: Method,
+    ) -> Response {
+        if raw_path.is_empty() && method == Method::Post {
+            info!("Info:  Received /api/reboot POST request");
+            REBOOT_SIGNAL.signal(());
+            let mut response = Response::json(path, serde_json::json!({}), StatusCode::Ok);
+            response.headers = Some(vec![Header {
+                name: "Connection",
+                value: "close",
+            }]);
+            return response;
+        } else {
+            return Response::status_code(response_format, Some(path), StatusCode::NotFound);
+        }
     }
 
     async fn rest_config_net(
@@ -470,9 +534,11 @@ pub(crate) async fn start(
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
+        let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
             response_signal,
+            rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
@@ -482,9 +548,11 @@ pub(crate) async fn start(
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
+        let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
             response_signal,
+            rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
@@ -494,9 +562,11 @@ pub(crate) async fn start(
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
+        let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
             response_signal,
+            rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
@@ -506,9 +576,11 @@ pub(crate) async fn start(
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
+        let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
             response_signal,
+            rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));

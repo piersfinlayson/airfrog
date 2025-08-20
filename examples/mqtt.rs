@@ -4,8 +4,8 @@
 
 //! airfrog example - Read a memory address and publish to MQTT every second
 //!
-//! Specifically, this example works with the Software Defined Retro ROM (SDRR)
-//! project.  When SDRR is built with COUNT_ROM_ACCESS enabled, it updates a
+//! Specifically, this example works with One ROM projct.
+//! When One ROM is built with COUNT_ROM_ACCESS enabled, it updates a
 //! counter in RAM every second with the total number of ROM accesses since
 //! boot.  This example is designed to read that counter every second, and
 //! output the number of accesses, in the last second, to an MQTT broker.
@@ -53,8 +53,8 @@ use airfrog_util::net::{Control as WifiControl, InterfaceConfig, Wifi, WifiType}
 // Creates app-descriptor required by the esp-idf bootloader.
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// Address in RAM we expect to find some magic bytes (should be SDRQ if the
-// target is a Software Defined Retro ROM).
+// Address in RAM we expect to find some magic bytes (should be b`sdrr` if the
+// target is a One ROM.
 const MAGIC_ADDR: u32 = 0x2000_0000;
 
 // The address in the target's RAM we will read from.
@@ -163,7 +163,7 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     // Read 0x2000_0000.
-    // This checks whether the target is a Software Defined Retro ROM, which
+    // This checks whether the target is a One ROM, which
     // has a counter at RAM_ADDR that it will increment every second with the
     // total number of ROM accesses since boot.
     let word = swd
