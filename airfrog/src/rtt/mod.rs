@@ -446,9 +446,13 @@ impl Rtt {
         // Only store the CB/buf now we've succeeded
         self.rtt_cb = Some(rtt_cb);
         self.rtt_up_buf = Some(rtt_up_buf);
-        self.state = State::Start;
-
-        info!("Info:  RTT started");
+        if self.state != State::Start {
+            // If we're not already started, set the state to Start
+            info!("Info:  RTT started");
+            self.state = State::Start;
+        } else {
+            debug!("Info:  RTT re-started at {location:#010X}");
+        }
 
         Ok(())
     }
@@ -488,11 +492,22 @@ impl Rtt {
 
     // Function to get any new RTT data from the target.
     async fn get_rtt_data_from_target(&mut self) -> Result<(), Error> {
-        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
-
         if self.local_buf.available_space() == 0 {
             // No space in our local buffer, so no point reading any more data
             return Err(Error::Full);
+        }
+
+        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
+
+        // Get current read position
+        let cur_read_pos = self.read_word(stored_buf.read_pos_field_loc()).await?;
+        if cur_read_pos != stored_buf.read_pos {
+            // If the read position has changed, restart
+            info!("Info:  RTT task detected potential device reset - RTT read position changed from {} to {}", stored_buf.read_pos, cur_read_pos);
+            let location = self.rtt_cb.as_ref().ok_or(Error::Stopped)?.location;
+            self.stop();
+            self.start(location).await?;
+            stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
         }
 
         // Get current write position
