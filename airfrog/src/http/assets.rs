@@ -24,7 +24,7 @@ pub(crate) const LOGO_PATH: &str = concat!("/static/logo.", env!("CARGO_PKG_VERS
 
 /// Airfrog CSS
 pub(crate) const CSS_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/style.css"));
-pub(crate) const CSS_PATH: &str = concat!("/static/style.", env!("CARGO_PKG_VERSION"), "-ac.css");
+pub(crate) const CSS_PATH: &str = concat!("/static/style.", env!("CARGO_PKG_VERSION"), "-af.css");
 
 /// Browser HTML
 pub(crate) const BROWSER_HTML_CONTENT: &[u8] =
@@ -36,18 +36,18 @@ pub(crate) const BROWSER_HTML_PATH: &str =
 pub(crate) const CONFIG_UPDATE_JS_CONTENT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/config_update.js"));
 pub(crate) const CONFIG_UPDATE_JS_PATH: &str =
-    concat!("/static/config_update.", env!("CARGO_PKG_VERSION"), "-f.js");
+    concat!("/static/config_update.", env!("CARGO_PKG_VERSION"), "-i.js");
 
 /// Memory JS
 pub(crate) const MEMORY_JS_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/memory.js"));
 pub(crate) const MEMORY_JS_PATH: &str =
-    concat!("/static/memory.", env!("CARGO_PKG_VERSION"), "-r.js");
+    concat!("/static/memory.", env!("CARGO_PKG_VERSION"), "-u.js");
 
 /// Memory CSS
 pub(crate) const MEMORY_CSS_CONTENT: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/memory.css"));
 pub(crate) const MEMORY_CSS_PATH: &str =
-    concat!("/static/memory.", env!("CARGO_PKG_VERSION"), "-t.css");
+    concat!("/static/memory.", env!("CARGO_PKG_VERSION"), "-v.css");
 
 /// Footer (and buttons) HTML
 pub(crate) const FOOTER_HTML_CONTENT: &[u8] =
@@ -58,11 +58,11 @@ pub(crate) const FOOTER_HTML_PATH: &str =
 /// RTT HTML
 pub(crate) const RTT_HTML_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rtt.html"));
 pub(crate) const RTT_HTML_PATH: &str =
-    concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-e.html");
+    concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-h.html");
 
 /// RTT CSS
 pub(crate) const RTT_JS_CONTENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rtt.js"));
-pub(crate) const RTT_JS_PATH: &str = concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-c.js");
+pub(crate) const RTT_JS_PATH: &str = concat!("/static/rtt.", env!("CARGO_PKG_VERSION"), "-i.js");
 
 // Standard static file cache header
 const CACHE_YEAR: Header = Header {

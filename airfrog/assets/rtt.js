@@ -8,6 +8,7 @@
 // end of the file so the minifier leaves those functions intact.
 
 let rttActive = false;
+let rttLastStatus = 'ok';
 
 function appendTrace(data) {
   if (!data || data.length === 0) {
@@ -41,17 +42,27 @@ function fetchRttData() {
     return;
   }
   
-  fetch('/api/rtt/data')
+  fetch('/api/rtt/data', { signal: AbortSignal.timeout(5000) })
     .then(response => response.json())
     .then(result => {
       appendTrace(result.data);
       
+      if (rttLastStatus === 'error') {
+        updateRttStatus('ok', 'RTT connection restored');
+        rttLastStatus = 'ok';
+      }
+
       if (rttActive) {
         setTimeout(fetchRttData, 100);
       }
     })
     .catch(error => {
       console.warn('RTT fetch error:', error);
+      
+      if (rttLastStatus === 'ok') {
+        updateRttStatus('error', 'RTT connection error - trying to restore ...');
+        rttLastStatus = 'error';
+      }
       
       if (rttActive) {
         setTimeout(fetchRttData, 1000);
@@ -74,6 +85,15 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', startRtt);
 } else {
   startRtt();
+}
+
+function updateRttStatus(status, message) {
+  const statusEl = document.getElementById('rtt-status');
+  if (!statusEl) return;
+  
+  statusEl.className = `status-message status ${status}`;
+  statusEl.textContent = message;
+  statusEl.style.display = 'flex';
 }
 
 window.addEventListener('beforeunload', function() {

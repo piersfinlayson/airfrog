@@ -591,6 +591,7 @@ pub async fn rtt_task(
     // While this looks like a tight loop, it's yielding in all cases,
     // ensuring no other tasks get starved.  If this is a bit overwhelming for
     // a Target, we can add a delay after reading data before reading again.
+    let mut error_state = false;
     loop {
         // Wait for a command, and, if we're running, data from the target
         let command = if rtt.state == State::Stop {
@@ -609,7 +610,15 @@ pub async fn rtt_task(
             }
         } else {
             if let Err(e) = rtt.get_rtt_data_from_target().await {
-                info!("Error: Hit error receiving RTT data {e:?}");
+                if !error_state {
+                    info!("Error: Hit error receiving RTT data {e:?}");
+                    error_state = true;
+                }
+            } else {
+                if error_state {
+                    info!("Info:  RTT data received successfully");
+                    error_state = false;
+                }
             }
 
             match select3(

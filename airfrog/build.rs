@@ -229,9 +229,11 @@ fn minify_with_swc(content: &str) -> Result<String, Box<dyn std::error::Error>> 
         );
 
         let mut buf = vec![];
-        let writer = JsWriter::new(cm.clone(), "\n", &mut buf, None);
+        let writer = JsWriter::new(cm.clone(), "", &mut buf, None);
+        let mut cfg = Config::default();
+        cfg.minify = true;
         let mut emitter = Emitter {
-            cfg: Config::default(),
+            cfg,
             cm,
             comments: None,
             wr: writer,
