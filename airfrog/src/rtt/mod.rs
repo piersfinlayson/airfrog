@@ -2,7 +2,7 @@
 //
 // MIT License
 
-//! airfrog - RTT  objects and routines
+//! airfrog - RTT objects and routines
 
 use alloc::format;
 use alloc::string::String;
