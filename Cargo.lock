@@ -2794,6 +2794,8 @@ dependencies = [
 [[package]]
 name = "sdrr-fw-parser"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843d1585c97999094a65d2bc3d83b0968f3a88d961f778854f969255b323f7a3"
 dependencies = [
  "deku",
  "esp-println",
