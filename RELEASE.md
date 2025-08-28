@@ -5,11 +5,11 @@
 To update the version:
 
 - Add the new version to [CHANGELOG.md](CHANGELOG.md), and note key changes.
-- Update the version in [airfrog-util/Cargo.toml](/rust/airfrog-util/Cargo.toml).
-- Update the version in [airfrog-bin/Cargo.toml](/rust/airfrog-bin/Cargo.toml).
-- Update the version in [airfrog-core/Cargo.toml](/rust/airfrog-core/Cargo.toml).
-- Update the version in [airfrog-swd/Cargo.toml](/rust/airfrog-swd/Cargo.toml).
-- Update the version in [airfrog/Cargo.toml](/rust/airfrog/Cargo.toml).
+- Update the version in [airfrog-util/Cargo.toml](/airfrog-util/Cargo.toml).
+- Update the version in [airfrog-bin/Cargo.toml](/airfrog-bin/Cargo.toml).
+- Update the version in [airfrog-core/Cargo.toml](/airfrog-core/Cargo.toml).
+- Update the version in [airfrog-swd/Cargo.toml](/airfrog-swd/Cargo.toml).
+- Update the version in [airfrog/Cargo.toml](/airfrog/Cargo.toml).
 
 ## Release Process
 

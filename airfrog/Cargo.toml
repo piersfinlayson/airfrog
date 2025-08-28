@@ -1,7 +1,7 @@
 [package]
 edition = "2024"
 name    = "airfrog"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Piers Finlayson <piers@piers.rocks>"]
 description = "Tiny wireless ARM programmer.  $3 WiFi module.  Written in Rust."
 repository = "https://github.com/piersfinlayson/airfrog"
