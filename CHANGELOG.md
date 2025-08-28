@@ -2,9 +2,16 @@
 
 All notables changes between versions are documented in this file.
 
-## ???
+## v0.1.1 - 2025-??-??
 
-Fixes
+### New
+
+- Add RTT (logging) support
+
+### Changes
+
+
+### Fixes
 
 - Corrected revision IDs for STM32F4x5.
 
