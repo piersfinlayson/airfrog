@@ -503,7 +503,10 @@ impl Rtt {
         let cur_read_pos = self.read_word(stored_buf.read_pos_field_loc()).await?;
         if cur_read_pos != stored_buf.read_pos {
             // If the read position has changed, restart
-            info!("Info:  RTT task detected potential device reset - RTT read position changed from {} to {}", stored_buf.read_pos, cur_read_pos);
+            info!(
+                "Info:  RTT task detected potential device reset - RTT read position changed from {} to {}",
+                stored_buf.read_pos, cur_read_pos
+            );
             let location = self.rtt_cb.as_ref().ok_or(Error::Stopped)?.location;
             self.stop();
             self.start(location).await?;

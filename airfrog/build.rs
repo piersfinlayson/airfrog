@@ -206,7 +206,7 @@ fn minify_with_swc(content: &str) -> Result<String, Box<dyn std::error::Error>> 
             None,
             &mut vec![],
         )
-        .map_err(|e| format!("Parse error: {:?}", e))?;
+        .map_err(|e| format!("Parse error: {e:?}"))?;
 
         let program = Program::Module(module);
         let top_level_mark = Mark::fresh(Mark::root());
@@ -243,7 +243,7 @@ fn minify_with_swc(content: &str) -> Result<String, Box<dyn std::error::Error>> 
             Program::Module(m) => emitter.emit_module(m),
             Program::Script(s) => emitter.emit_script(s),
         }
-        .map_err(|e| format!("Codegen error: {:?}", e))?;
+        .map_err(|e| format!("Codegen error: {e:?}"))?;
 
         Ok(String::from_utf8(buf)?)
     })
