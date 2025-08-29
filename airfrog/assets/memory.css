@@ -143,6 +143,17 @@
     margin: 0;
 }
 
+.range-info {
+    background: var(--hover);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: var(--accent);
+}
+
 .status-message {
     margin: 1rem 0;
     padding: 0.5rem;
@@ -163,15 +174,4 @@
     background: #4f0d0d;
     color: #f87171;
     border: 1px solid #dc2626;
-}
-
-.range-info {
-    background: var(--hover);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.5rem;
-    margin: 0.5rem 0;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    color: var(--accent);
 }

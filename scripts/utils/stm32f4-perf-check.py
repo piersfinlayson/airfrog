@@ -577,7 +577,8 @@ def read_dwt_counters():
         'exception': read_memory(DWT_EXCCNT_ADDR),        # Cycles spent in exception overhead
         'sleep': read_memory(DWT_SLEEPCNT_ADDR),          # Cycles spent sleeping
         'lsu': read_memory(DWT_LSUCNT_ADDR),              # Load/store unit operations
-        'folded': read_memory(DWT_FOLDCNT_ADDR)           # Instructions that were folded (optimized away)
+        'folded': read_memory(DWT_FOLDCNT_ADDR),          # Instructions that were folded (optimized away)
+        'rom_bytes': read_memory(0x20000008)
     }
 
 def calculate_metrics(current, previous):
@@ -586,13 +587,17 @@ def calculate_metrics(current, previous):
         return {}
     
     delta_cycles = current['cycles'] - previous['cycles']
+    delta_rom_bytes = current['rom_bytes'] - previous['rom_bytes']
     
     # Handle 32-bit counter overflow
     if delta_cycles < 0:
         delta_cycles += (1 << 32)  # Add 2^32 to correct for wraparound
-    
+    if delta_rom_bytes < 0:
+        delta_rom_bytes += (1 << 32)
+        
     return {
-        'delta_cycles': delta_cycles
+        'delta_cycles': delta_cycles,
+        'delta_rom_bytes': delta_rom_bytes
     }
 
 def main():
@@ -618,9 +623,9 @@ def main():
         setup_dwt()
         
         print("Monitoring DWT counters (Ctrl+C to stop)...")
-        print("=" * 70)
-        print(f"{'Time':>8} {'Cycles':>10} {'LSU':>6} {'Fold':>6} {'Exc':>6} {'Cycles/s':>10} {'CPS_avg':>8}")
-        print("=" * 70)
+        print("=" * 90)
+        print(f"{'Time':>8} {'Cycles':>10} {'LSU':>6} {'Fold':>6} {'Exc':>6} {'Cycles/s':>10} {'CPS_avg':>8} {'RomB/s':>8} {'RB_avg':>8}")
+        print("=" * 90)
         
         previous_counters = None
         previous_time = None
@@ -629,7 +634,7 @@ def main():
         total_cycles = 0
         total_cycles_per_sec = 0
         counter = 0
-        last_elapse = 0
+        total_rom_bytes_per_sec = 0
         
         while True:
             cycle_read_time = time.time()
@@ -641,24 +646,29 @@ def main():
                 # Calculate timing
                 actual_interval = cycle_read_time - previous_time
                 cycles_per_second = metrics['delta_cycles'] / actual_interval
+                rom_bytes_per_second = metrics['delta_rom_bytes'] / actual_interval
                 
                 # Update rolling averages
                 counter += 1
                 total_cycles += metrics['delta_cycles']
                 
                 total_cycles_per_sec += cycles_per_second
+                total_rom_bytes_per_sec += rom_bytes_per_second
+                
                 cycles_per_sec_average = total_cycles_per_sec / counter
+                rom_bytes_per_sec_average = total_rom_bytes_per_sec / counter
                 
                 elapsed = time.time() - start_time
                 
-                last_elapse = elapsed
                 print(f"{elapsed:6.1f} "
                     f"{metrics['delta_cycles']:10d} "
                     f"{current_counters['lsu']:6d} "
                     f"{current_counters['folded']:6d} "
                     f"{current_counters['exception']:6d} "
                     f"{cycles_per_second:11.0f} "
-                    f"{cycles_per_sec_average:8.0f}")
+                    f"{cycles_per_sec_average:8.0f} "
+                    f"{rom_bytes_per_second:8.0f} "
+                    f"{rom_bytes_per_sec_average:8.0f}")
             
             previous_counters = current_counters.copy()
             previous_time = cycle_read_time

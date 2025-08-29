@@ -1,0 +1,7 @@
+"Reference","Value","Datasheet","Footprint","Qty","DNP","LCSC","Manufacturer"
+"C1,C2","1uF","~","Capacitor_SMD:C_0402_1005Metric","2","","C52923",""
+"C3","10uF","~","Capacitor_SMD:C_0402_1005Metric","1","","C15525",""
+"C4","0.1uF","~","Capacitor_SMD:C_0402_1005Metric","1","","C1525",""
+"R1,R2,R3,R4","4K7","~","Resistor_SMD:R_0402_1005Metric","4","","C25900",""
+"U1","ESP-C3-MINI_1","https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf","espressif:ESP32-C3-MINI-1_HandSoldering","1","","C2838502","ESP32-C3-MINI-1-N4"
+"U2","AP2112K-3.3","https://www.diodes.com/assets/Datasheets/AP2112.pdf","Package_TO_SOT_SMD:SOT-23-5","1","","C51118","AP2112K-3.3TRG1"

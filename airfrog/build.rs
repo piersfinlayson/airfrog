@@ -8,6 +8,16 @@ use jiff::Timestamp;
 use std::path::Path;
 use std::{env, fs};
 
+use swc_common::GLOBALS;
+use swc_common::{FileName, Mark, SourceMap, sync::Lrc};
+use swc_ecma_ast::{EsVersion, Program};
+use swc_ecma_codegen::{Config, Emitter, text_writer::JsWriter};
+use swc_ecma_minifier::{
+    optimize,
+    option::{ExtraOptions, MinifyOptions},
+};
+use swc_ecma_parser::{Syntax, parse_file_as_module};
+
 const PART_CSV: &str = "partitions.csv";
 const PART_RUST: &str = "partitions.rs";
 
@@ -149,7 +159,7 @@ fn minify_html(path: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Er
 }
 
 fn minify_js(path: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let content = fs::read(path)?;
+    let content = fs::read_to_string(path)?;
     let relative_path = path.strip_prefix("assets")?;
     let output_path = out_dir.join(relative_path);
 
@@ -159,47 +169,18 @@ fn minify_js(path: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Erro
 
     println!("Processing JS: {}", path.display());
 
-    let session = minify_js::Session::new();
-    let mut output = Vec::new();
-
-    // Try Module mode first (often more forgiving)
-    match minify_js::minify(
-        &session,
-        minify_js::TopLevelMode::Module,
-        &content,
-        &mut output,
-    ) {
-        Ok(()) => {
-            fs::write(&output_path, &output)?;
+    // Try SWC minification first
+    match minify_with_swc(&content) {
+        Ok(minified) => {
+            fs::write(&output_path, minified)?;
             println!(
-                "Minified JS (Module): {} -> {}",
-                path.display(),
-                output_path.display()
-            );
-            return Ok(());
-        }
-        Err(_) => {
-            output.clear();
-        }
-    }
-
-    // Fall back to Global mode
-    match minify_js::minify(
-        &session,
-        minify_js::TopLevelMode::Global,
-        &content,
-        &mut output,
-    ) {
-        Ok(()) => {
-            fs::write(&output_path, &output)?;
-            println!(
-                "Minified JS (Global): {} -> {}",
+                "Minified JS (SWC): {} -> {}",
                 path.display(),
                 output_path.display()
             );
         }
         Err(e) => {
-            eprintln!("JS minify failed for {}: {:?}", path.display(), e);
+            eprintln!("SWC minify failed for {}: {:?}", path.display(), e);
             fs::write(&output_path, content)?;
             println!(
                 "Copied JS (fallback): {} -> {}",
@@ -211,6 +192,63 @@ fn minify_js(path: &Path, out_dir: &Path) -> Result<(), Box<dyn std::error::Erro
 
     Ok(())
 }
+
+fn minify_with_swc(content: &str) -> Result<String, Box<dyn std::error::Error>> {
+    GLOBALS.set(&Default::default(), || {
+        let cm = Lrc::new(SourceMap::default());
+
+        let source_file = cm.new_source_file(FileName::Anon.into(), content.to_string());
+
+        let module = parse_file_as_module(
+            &source_file,
+            Syntax::Es(Default::default()),
+            EsVersion::Es2020,
+            None,
+            &mut vec![],
+        )
+        .map_err(|e| format!("Parse error: {e:?}"))?;
+
+        let program = Program::Module(module);
+        let top_level_mark = Mark::fresh(Mark::root());
+
+        let minified = optimize(
+            program,
+            cm.clone(),
+            None,
+            None,
+            &MinifyOptions {
+                compress: None,
+                mangle: None,
+                ..Default::default()
+            },
+            &ExtraOptions {
+                unresolved_mark: Mark::fresh(Mark::root()),
+                top_level_mark,
+                mangle_name_cache: None,
+            },
+        );
+
+        let mut buf = vec![];
+        let writer = JsWriter::new(cm.clone(), "", &mut buf, None);
+        let mut cfg = Config::default();
+        cfg.minify = true;
+        let mut emitter = Emitter {
+            cfg,
+            cm,
+            comments: None,
+            wr: writer,
+        };
+
+        match &minified {
+            Program::Module(m) => emitter.emit_module(m),
+            Program::Script(s) => emitter.emit_script(s),
+        }
+        .map_err(|e| format!("Codegen error: {e:?}"))?;
+
+        Ok(String::from_utf8(buf)?)
+    })
+}
+
 fn linker_be_nice() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {

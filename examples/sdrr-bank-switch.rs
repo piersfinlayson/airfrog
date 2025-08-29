@@ -2,14 +2,14 @@
 //
 // MIT License
 
-//! airfrog example - Rotates between a Software Defined Retro ROM's bank of
-//! ROM images, by toggling pins X1/X2.
+//! airfrog example - Rotates between One ROM's bank of ROM images, by toggling
+//! pins X1/X2.
 //!
-//! Find out more about SDRR at [piers.rocks/u/sdrr](https://piers.rocks/u/sdrr).
+//! Find out more about One ROM at [piers.rocks/u/one](https://piers.rocks/u/one).
 //!
 //! To run this example:
 //! - connect to the airfrog device (ESP32) using USB serial
-//! - connect the airfrog device's SWD lines to the SDRR
+//! - connect the airfrog device's SWD lines to the One ROM
 //! - reset the airfrog into bootloader mode
 //! - run the example with `ESP_LOG=info cargo run --example erase-stm32f4`
 //! - reset the airfrog device again to start the example
@@ -97,15 +97,15 @@ async fn main(_spawner: Spawner) -> ! {
     };
 
     // Check for the magic bytes in flash
-    const SDRR_MAGIC_BYTE_OFFSET: u32 = 0x200;
+    const ONE_ROM_MAGIC_BYTE_OFFSET: u32 = 0x200;
     let magic_bytes = swd
-        .read_mem(mcu.flash_base().unwrap() + SDRR_MAGIC_BYTE_OFFSET)
+        .read_mem(mcu.flash_base().unwrap() + ONE_ROM_MAGIC_BYTE_OFFSET)
         .await
         .expect("Failed to read magic bytes from flash");
     if magic_bytes.to_le_bytes() != *b"SDRR" {
-        panic!("Didn't find SDRR magic bytes: 0x{magic_bytes:08X}. Is this an SDRR device?");
+        panic!("Didn't find One ROM magic bytes: 0x{magic_bytes:08X}. Is this a One ROM device?");
     }
-    info!("Detected Software Defined Retro ROM");
+    info!("Detected One ROM");
 
     // Main loop.  We need to re-initialize the device if `main_loop()`
     // returns an error, before starting again.

@@ -43,8 +43,9 @@ use airfrog_swd::bin;
 use sdrr_fw_parser::Reader;
 
 use crate::config::CONFIG;
-use crate::firmware::sdrr::{SdrrHandler, SdrrHandlerInfo};
+use crate::firmware::one_rom::{SdrrHandler, SdrrHandlerInfo};
 use crate::firmware::{FwHandler, FwHandlerInfo};
+use crate::rtt::{Control as RttControl, rtt_control};
 
 pub(crate) mod request;
 pub(crate) mod response;
@@ -92,7 +93,7 @@ pub(crate) async fn task(
     let mut reconnect_count: u32 = 0;
     loop {
         // Figure out how long select should wait for.
-        let dur = if !target.is_connected() {
+        let dur = if !target.is_connected().await {
             TARGET_RECONNECT_DURATION
         } else {
             TARGET_KEEPALIVE_DURATION
@@ -137,13 +138,13 @@ pub(crate) async fn task(
                 target.handle_request(req_acc).await;
             }
             Either::Second(_) => {
-                if target.is_connected() {
+                if target.is_connected().await {
                     if target.refresh() {
                         target.do_refresh().await;
                     } else if target.keepalive() {
                         target.do_keepalive().await;
                     }
-                } else if !target.is_connected() && target.auto_connect() {
+                } else if !target.is_connected().await && target.auto_connect() {
                     reconnect_count += 1;
                     if reconnect_count == 1
                         || reconnect_count.is_multiple_of(TARGET_RECONNECT_LOG_INTERVAL)
@@ -151,7 +152,7 @@ pub(crate) async fn task(
                         info!("Note:  Target not connected - connection attempt {reconnect_count}");
                     }
                     target.connect().await.ok();
-                    if target.is_connected() {
+                    if target.is_connected().await {
                         reconnect_count = 0;
                     }
                 }
@@ -227,9 +228,15 @@ impl<'a> Target<'a> {
         self.request_sender
     }
 
-    fn is_connected(&mut self) -> bool {
+    async fn is_connected(&mut self) -> bool {
         let connected = self.swd.swd_if().is_connected();
+
         if !connected {
+            if self.fw_info.is_some() {
+                // Stop the RTT Task
+                rtt_control(RttControl::Stop);
+            }
+
             self.fw_info = None;
         }
         connected
@@ -287,7 +294,24 @@ impl<'a> Target<'a> {
     async fn connect_inner(&mut self) -> Result<Option<serde_json::Value>, SwdError> {
         self.swd.reset_swd_target().await?;
         info!("OK:    Target connected {self}");
-        self.retrieve_firmware_info(false).await
+        let fw = self.retrieve_firmware_info(false).await?;
+
+        if let Some(fw) = fw.as_ref() {
+            let rtt_ptr = fw
+                .get("flash")
+                .and_then(|v| v.get("extra_info"))
+                .and_then(|v| v.get("rtt_ptr"))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32);
+            if let Some(rtt_cb_loc) = rtt_ptr {
+                rtt_control(RttControl::Start { rtt_cb_loc });
+                debug!("Info:  RTT started at location {rtt_cb_loc:#010X}");
+            } else {
+                debug!("No RTT pointer found");
+            }
+        }
+
+        Ok(fw)
     }
 
     async fn do_keepalive(&mut self) -> () {
@@ -440,9 +464,9 @@ impl<'a> Target<'a> {
             trace!("Note:  Firmware detected: {fw}");
             let fw_type = fw.get(crate::firmware::AF_FW_TYPE_KEY);
             if let Some(fw_type) = fw_type
-                && fw_type == crate::firmware::sdrr::AF_FW_TYPE
+                && fw_type == crate::firmware::one_rom::AF_FW_TYPE
             {
-                firmware = Some(crate::firmware::sdrr::SdrrHandlerInfo::name().to_string());
+                firmware = Some(crate::firmware::one_rom::SdrrHandlerInfo::name().to_string());
             }
         } else {
             debug!("Note:  No firmware detected");
@@ -466,6 +490,7 @@ impl<'a> Target<'a> {
     //
     // Receives commands from Httpd, handles them, and responds
     async fn handle_request(&mut self, request: Request) {
+        trace!("Handling request: {:?}", request.command);
         let response = match request.command {
             Command::GetStatus => self.rest_get_status(),
             Command::Reset => self.rest_reset().await,
@@ -1075,6 +1100,10 @@ impl<'a> Reader for &mut Target<'a> {
         let offset = (addr & 3) as usize;
         buf.copy_from_slice(&bytes[offset..offset + buf.len()]);
         Ok(())
+    }
+
+    fn update_base_address(&mut self, _new_base: u32) {
+        // No-op as Target does not have a concept of "base address"
     }
 }
 

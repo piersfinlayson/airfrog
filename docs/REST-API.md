@@ -54,6 +54,12 @@ POST  /api/target/flash/write/0x{addr}        # Write single word to flash
 POST  /api/target/flash/bulk/write/0x{addr}   # Write multiple words to flash
 ```
 
+## Real Time Trace (RTT) Operations
+
+```text
+GET   /api/rtt/read                           # Read up to 256 bytes of available RTT data
+```
+
 ## Raw Register Operations
 
 ```text
@@ -624,6 +630,21 @@ Writes multiple consecutive 32-bit words to flash memory.
 ```
 
 ---
+
+## Real Time Trace (RTT) Operations
+
+### Read RTT Data
+
+```
+GET /api/rtt/read
+```
+
+**Response:**
+```json
+{
+  "data": ["0x12", "0x34", "0x56", "..."]
+}
+```
 
 ## Raw Register Operations
 

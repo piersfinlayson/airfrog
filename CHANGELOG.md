@@ -2,9 +2,20 @@
 
 All notables changes between versions are documented in this file.
 
-## ???
+## v0.1.1 - 2025-??-??
 
-Fixes
+This version adds:
+- RTT (logging) support from One ROM
+- Airfrog hardware revision B, with a new 2x3 target (and programming) connector.
+
+### New
+
+- Add RTT (logging) support
+- Add hardware revision B
+
+### Changes
+
+### Fixes
 
 - Corrected revision IDs for STM32F4x5.
 

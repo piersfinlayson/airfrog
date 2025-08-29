@@ -14,7 +14,7 @@ Tiny wireless co-processor/programmer/debugger for ARM.  Uses $3 WiFi module.  W
 The size of a postage stamp/quarter.  $3 BOM.  Hand solderable.
 
 <div align="center">
-  <img src="docs/images/airfrog-rev-a2-side.png" alt="Airfrog Rev A" width="400">
+  <img src="docs/images/airfrog-rev-b-side.png" alt="Airfrog Rev B" width="400">
 </div>
 
 ## Use Cases and Features
