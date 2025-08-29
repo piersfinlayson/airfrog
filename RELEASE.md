@@ -47,6 +47,8 @@ Change the paths used in [`airfrog-swd`](airfrog-swd/Cargo.toml) to point to the
 
 Check in changes.
 
+Now you need to update the version of airfrog-swd used everywhere to the new version, and also point to the local path version of airfrog-swd.
+
 Publish the new version of `airfrog-swd` to crates.io:
 
 ```bash

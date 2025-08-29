@@ -17,14 +17,14 @@ resolver = "2"
 
 [package]
 name = "airfrog-ws"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
 
 [dev-dependencies]
 airfrog-core = "0.1.1"
-airfrog-swd = "0.1.0"
+airfrog-swd = { path = "airfrog-swd", version = "0.1.1" }
 airfrog-bin = "0.1.1"
 airfrog-util = "0.1.1"
 
