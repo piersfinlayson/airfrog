@@ -47,7 +47,7 @@ Change the paths used in [`airfrog-swd`](airfrog-swd/Cargo.toml) to point to the
 
 Check in changes.
 
-Now you need to update the version of airfrog-swd used everywhere to the new version, and also point to the local path version of airfrog-swd.
+Now you need to update the version of airfrog-swd used everywhere to the new version, and also point to the local path version of airfrog-swd.  This is a bit painful and we'll need back out the local path shortly.
 
 Publish the new version of `airfrog-swd` to crates.io:
 
@@ -58,7 +58,7 @@ cargo publish -p airfrog-swd
 
 ### airfrog
 
-Change the paths used in [`airfrog`](airfrog/Cargo.toml) to point to the new versions of `airfrog-util`, `airfrog-bin`, `airfrog-core` and `airfrog-util`.
+Change the paths used in [`airfrog`](airfrog/Cargo.toml) to point to the new versions of `airfrog-util`, `airfrog-bin`, `airfrog-core` and `airfrog-util`, and also [`Cargo.toml`](Cargo.toml)
 
 Check in changes.
 
