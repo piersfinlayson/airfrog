@@ -44,6 +44,7 @@ use sdrr_fw_parser::Reader;
 
 use crate::config::CONFIG;
 use crate::firmware::one_rom::{SdrrHandler, SdrrHandlerInfo};
+use crate::firmware::one_rom_lab::{OneRomHandler, OneRomLabHandlerInfo};
 use crate::firmware::{FwHandler, FwHandlerInfo};
 use crate::rtt::{Control as RttControl, rtt_control};
 
@@ -261,6 +262,31 @@ impl<'a> Target<'a> {
             }
         };
 
+        if OneRomLabHandlerInfo::supports_mcu(&mcu) {
+            let mut lab_handler = OneRomHandler::new(&mut *self);
+            if lab_handler.detect().await {
+                let name = OneRomLabHandlerInfo::name();
+                if !already_have {
+                    info!("OK:    Detected firmware type: {name}");
+                } else {
+                    debug!("OK:    Detected firmware type: {name}");
+                }
+                match lab_handler.parse_info().await {
+                    Ok(info) => {
+                        debug!("Info:  Firmware summary {}", info.summary());
+                        trace!("Info:  Firmware details {}", info.details());
+                        return Ok(Some(info.details()))
+                    }
+                    Err(e) => {
+                        warn!("Error: Failed to parse firmware info: {e:?}");
+                        return Ok(None)
+                    }
+                }
+            } else {
+                trace!("Note:  No One ROM Lab firmware detected on target: {mcu:?}");
+            }
+        }
+
         if SdrrHandlerInfo::supports_mcu(&mcu) {
             let mut sdrr_handler = SdrrHandler::new(self);
             if sdrr_handler.detect().await {
@@ -286,7 +312,7 @@ impl<'a> Target<'a> {
                 Ok(None)
             }
         } else {
-            debug!("Note:  No firmware handler for MCU: {mcu:?}");
+            debug!("Note:  No valid firmware handler for MCU: {mcu:?}");
             Ok(None)
         }
     }
@@ -297,12 +323,7 @@ impl<'a> Target<'a> {
         let fw = self.retrieve_firmware_info(false).await?;
 
         if let Some(fw) = fw.as_ref() {
-            let rtt_ptr = fw
-                .get("flash")
-                .and_then(|v| v.get("extra_info"))
-                .and_then(|v| v.get("rtt_ptr"))
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32);
+            let rtt_ptr = Self::extract_rtt_ptr(fw);
             if let Some(rtt_cb_loc) = rtt_ptr {
                 rtt_control(RttControl::Start { rtt_cb_loc });
                 debug!("Info:  RTT started at location {rtt_cb_loc:#010X}");
@@ -312,6 +333,26 @@ impl<'a> Target<'a> {
         }
 
         Ok(fw)
+    }
+
+    fn extract_rtt_ptr(fw_json: &serde_json::Value) -> Option<u32> {
+        // Try One ROM format first
+        if let Some(rtt_ptr) = fw_json
+            .get("flash")
+            .and_then(|v| v.get("extra_info"))
+            .and_then(|v| v.get("rtt_ptr"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32) 
+        {
+            return Some(rtt_ptr);
+        }
+        
+        // Try One ROM Lab format
+        fw_json
+            .get("flash")
+            .and_then(|v| v.get("rtt_ptr"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
     }
 
     async fn do_keepalive(&mut self) -> () {

@@ -9,13 +9,14 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-use sdrr_fw_parser::{Parser, Reader as SdrrReader, Sdrr, SdrrInfo, SdrrRuntimeInfo, SdrrServe};
+use sdrr_fw_parser::{Parser, Reader as OneRomReader, Sdrr, SdrrInfo, SdrrRuntimeInfo, SdrrServe};
+
 
 use crate::firmware::AF_FW_TYPE_KEY;
 use crate::firmware::{FormatterError, FwError, FwHandler, FwHandlerInfo, FwInfo, JsonToHtml};
 use airfrog_core::Mcu;
 
-pub(crate) const AF_FW_TYPE: &str = "SdrrInfo";
+pub(crate) const AF_FW_TYPE: &str = "OneRom";
 
 /// SDRR firmware handler information
 pub struct SdrrHandlerInfo;
@@ -33,11 +34,11 @@ impl FwHandlerInfo for SdrrHandlerInfo {
 }
 
 /// The SDRR firmware handler
-pub struct SdrrHandler<R: SdrrReader> {
+pub struct SdrrHandler<R: OneRomReader> {
     parser: Parser<R>,
 }
 
-impl<R: SdrrReader> FwHandler<R> for SdrrHandler<R> {
+impl<R: OneRomReader> FwHandler<R> for SdrrHandler<R> {
     fn new(reader: R) -> Self {
         let parser = Parser::new(reader);
         Self { parser }
@@ -88,7 +89,7 @@ impl FwInfo for FwSdrr {
 pub struct JsonToHtmler {}
 
 impl JsonToHtmler {
-    pub fn get_sdrr(&self, data: serde_json::Value) -> Result<Sdrr, FormatterError> {
+    fn get_sdrr(&self, data: serde_json::Value) -> Result<Sdrr, FormatterError> {
         if !self.can_handle(&data) {
             return Err(FormatterError::JsonToHtml(
                 "Unsupported firmware data".to_string(),
@@ -163,7 +164,7 @@ impl JsonToHtmler {
 #[allow(clippy::collapsible_if)]
 impl JsonToHtml for JsonToHtmler {
     fn can_handle(&self, data: &serde_json::Value) -> bool {
-        data.get("_af_fw_type").is_some_and(|t| t == "SdrrInfo")
+        data.get("_af_fw_type").is_some_and(|t| t == AF_FW_TYPE)
     }
 
     fn summary(&self, data: serde_json::Value) -> Result<String, FormatterError> {

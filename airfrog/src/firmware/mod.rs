@@ -12,6 +12,7 @@
 //! the firmware on the device airfrog is attached to.
 
 pub(crate) mod one_rom;
+pub(crate) mod one_rom_lab;
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -29,8 +30,11 @@ pub(crate) const AF_FW_TYPE_KEY: &str = "_af_fw_type";
 
 #[derive(EnumIter)]
 pub enum JsonToHtmlers {
-    /// SDRR firmware JSON to HTML formatter
-    Sdrr(one_rom::JsonToHtmler),
+    /// One ROM firmware JSON to HTML formatter
+    OneRom(one_rom::JsonToHtmler),
+
+    /// One ROM Lab firmware JSON to HTML formatter
+    OneRomLab(one_rom_lab::JsonToHtmler),
 
     /// Default formatter
     Default(DefaultFormatter), // Is last
@@ -39,21 +43,24 @@ pub enum JsonToHtmlers {
 impl JsonToHtml for JsonToHtmlers {
     fn can_handle(&self, data: &serde_json::Value) -> bool {
         match self {
-            JsonToHtmlers::Sdrr(handler) => handler.can_handle(data),
+            JsonToHtmlers::OneRom(handler) => handler.can_handle(data),
+            JsonToHtmlers::OneRomLab(handler) => handler.can_handle(data),
             JsonToHtmlers::Default(handler) => handler.can_handle(data),
         }
     }
 
     fn summary(&self, data: serde_json::Value) -> Result<String, FormatterError> {
         match self {
-            JsonToHtmlers::Sdrr(handler) => handler.summary(data),
+            JsonToHtmlers::OneRom(handler) => handler.summary(data),
+            JsonToHtmlers::OneRomLab(handler) => handler.summary(data),
             JsonToHtmlers::Default(handler) => handler.summary(data),
         }
     }
 
     fn complete(&self, data: serde_json::Value) -> Result<String, FormatterError> {
         match self {
-            JsonToHtmlers::Sdrr(handler) => handler.complete(data),
+            JsonToHtmlers::OneRom(handler) => handler.complete(data),
+            JsonToHtmlers::OneRomLab(handler) => handler.complete(data),
             JsonToHtmlers::Default(handler) => handler.complete(data),
         }
     }

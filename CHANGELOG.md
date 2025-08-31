@@ -2,7 +2,17 @@
 
 All notables changes between versions are documented in this file.
 
-## v0.1.1 - 2025-??-??
+## v0.1.2 - 2025-??-??
+
+### New
+
+- Support for One ROM Lab firmware
+
+### Changes
+
+### Fixes
+
+## v0.1.1 - 2025-08-28
 
 This version adds:
 - RTT (logging) support from One ROM

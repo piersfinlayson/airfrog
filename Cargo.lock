@@ -46,12 +46,12 @@ dependencies = [
 
 [[package]]
 name = "airfrog"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "airfrog-bin 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-core 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-swd 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-util 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-bin 0.1.2",
+ "airfrog-core 0.1.2",
+ "airfrog-swd 0.1.2",
+ "airfrog-util 0.1.2",
  "built",
  "crc",
  "critical-section",
@@ -61,8 +61,8 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
- "embassy-sync 0.7.0",
- "embassy-time",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.5.0",
  "embedded-io",
  "embedded-io-async",
  "embedded-storage",
@@ -82,7 +82,7 @@ dependencies = [
  "minify-html",
  "minify-js",
  "riscv 0.14.0",
- "sdrr-fw-parser 0.4.0",
+ "sdrr-fw-parser 0.4.2",
  "serde",
  "serde_json",
  "static_assertions",
@@ -98,14 +98,6 @@ dependencies = [
 [[package]]
 name = "airfrog-bin"
 version = "0.1.1"
-dependencies = [
- "log",
- "serde",
-]
-
-[[package]]
-name = "airfrog-bin"
-version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cc49a43505737d808927ebfe52a1723af48e6450d1cacd40fbbceee7cab1d45"
 dependencies = [
@@ -114,12 +106,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "airfrog-core"
-version = "0.1.1"
+name = "airfrog-bin"
+version = "0.1.2"
 dependencies = [
- "esp-alloc",
- "sdrr-fw-parser 0.3.0",
- "static_assertions",
+ "log",
+ "serde",
 ]
 
 [[package]]
@@ -134,20 +125,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "airfrog-swd"
-version = "0.1.1"
+name = "airfrog-core"
+version = "0.1.2"
 dependencies = [
- "airfrog-bin 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-core 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "embassy-net",
- "embassy-time",
- "embedded-io",
- "embedded-io-async",
  "esp-alloc",
- "esp-hal",
- "log",
- "riscv 0.14.0",
- "serde",
+ "sdrr-fw-parser 0.4.0",
+ "static_assertions",
 ]
 
 [[package]]
@@ -156,10 +139,10 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec432f47894c3192df3e0a4ad58569cf533038cac3e27c051bf6e476642012d4"
 dependencies = [
- "airfrog-bin 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-core 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-bin 0.1.1",
+ "airfrog-core 0.1.1",
  "embassy-net",
- "embassy-time",
+ "embassy-time 0.4.0",
  "embedded-io",
  "embedded-io-async",
  "esp-alloc",
@@ -170,20 +153,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "airfrog-util"
-version = "0.1.1"
+name = "airfrog-swd"
+version = "0.1.2"
 dependencies = [
- "embassy-executor",
- "embassy-futures",
+ "airfrog-bin 0.1.2",
+ "airfrog-core 0.1.2",
  "embassy-net",
- "embassy-sync 0.7.0",
- "embassy-time",
+ "embassy-time 0.5.0",
+ "embedded-io",
+ "embedded-io-async",
  "esp-alloc",
  "esp-hal",
- "esp-println",
- "esp-wifi",
  "log",
- "static_cell",
+ "riscv 0.14.0",
+ "serde",
 ]
 
 [[package]]
@@ -195,8 +178,25 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
- "embassy-sync 0.7.0",
- "embassy-time",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.4.0",
+ "esp-alloc",
+ "esp-hal",
+ "esp-println",
+ "esp-wifi",
+ "log",
+ "static_cell",
+]
+
+[[package]]
+name = "airfrog-util"
+version = "0.1.2"
+dependencies = [
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-net",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.5.0",
  "esp-alloc",
  "esp-hal",
  "esp-println",
@@ -209,16 +209,16 @@ dependencies = [
 name = "airfrog-ws"
 version = "0.1.1"
 dependencies = [
- "airfrog-bin 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-core 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-swd 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-util 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-bin 0.1.1",
+ "airfrog-core 0.1.1",
+ "airfrog-swd 0.1.1",
+ "airfrog-util 0.1.1",
  "critical-section",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
- "embassy-sync 0.7.0",
- "embassy-time",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.5.0",
  "esp-alloc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
@@ -840,7 +840,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac19c3edcdad839c71cb919cd09a632d9915d630760b37f0b74290188c08f248"
 dependencies = [
- "embassy-time",
+ "embassy-time 0.4.0",
  "embedded-io-async",
 ]
 
@@ -872,7 +872,7 @@ dependencies = [
  "embassy-embedded-hal 0.4.0",
  "embassy-futures",
  "embassy-sync 0.6.2",
- "embassy-time",
+ "embassy-time 0.4.0",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
@@ -889,7 +889,7 @@ checksum = "d1611b7a7ab5d1fbed84c338df26d56fd9bded58006ebb029075112ed2c5e039"
 dependencies = [
  "embassy-futures",
  "embassy-hal-internal",
- "embassy-sync 0.7.0",
+ "embassy-sync 0.7.2",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
  "embedded-hal-async",
@@ -923,9 +923,9 @@ dependencies = [
 
 [[package]]
 name = "embassy-futures"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f878075b9794c1e4ac788c95b728f26aa6366d32eeb10c7051389f898f7d067"
+checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-hal-internal"
@@ -938,14 +938,14 @@ dependencies = [
 
 [[package]]
 name = "embassy-net"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "940c4b9fe5c1375b09a0c6722c0100d6b2ed46a717a34f632f26e8d7327c4383"
+checksum = "0558a231a47e7d4a06a28b5278c92e860f1200f24821d2f365a2f40fe3f3c7b2"
 dependencies = [
  "document-features",
  "embassy-net-driver",
- "embassy-sync 0.6.2",
- "embassy-time",
+ "embassy-sync 0.7.2",
+ "embassy-time 0.5.0",
  "embedded-io-async",
  "embedded-nal-async",
  "heapless",
@@ -976,15 +976,15 @@ dependencies = [
 
 [[package]]
 name = "embassy-sync"
-version = "0.7.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cef1a8a1ea892f9b656de0295532ac5d8067e9830d49ec75076291fd6066b136"
+checksum = "73974a3edbd0bd286759b3d483540f0ebef705919a5f56f4fc7709066f71689b"
 dependencies = [
  "cfg-if",
  "critical-section",
  "embedded-io-async",
+ "futures-core",
  "futures-sink",
- "futures-util",
  "heapless",
 ]
 
@@ -1006,10 +1006,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-time-driver"
-version = "0.2.0"
+name = "embassy-time"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d45f5d833b6d98bd2aab0c2de70b18bfaa10faf661a1578fd8e5dfb15eb7eba"
+checksum = "f4fa65b9284d974dad7a23bb72835c4ec85c0b540d86af7fc4098c88cff51d65"
+dependencies = [
+ "cfg-if",
+ "critical-section",
+ "document-features",
+ "embassy-time-driver",
+ "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "futures-core",
+ "log",
+]
+
+[[package]]
+name = "embassy-time-driver"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0a244c7dc22c8d0289379c8d8830cae06bb93d8f990194d0de5efb3b5ae7ba6"
 dependencies = [
  "document-features",
 ]
@@ -1260,7 +1277,7 @@ dependencies = [
  "document-features",
  "embassy-executor",
  "embassy-sync 0.6.2",
- "embassy-time",
+ "embassy-time 0.4.0",
  "embassy-time-driver",
  "embassy-time-queue-utils",
  "esp-config 0.5.0",
@@ -1949,7 +1966,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19d29b22cbec3090d936f75cd482130286eb1f3d566c89f4914c6d51147be974"
 dependencies = [
  "embassy-net",
- "embassy-time",
+ "embassy-time 0.4.0",
  "heapless",
  "smoltcp",
 ]
@@ -2796,6 +2813,17 @@ name = "sdrr-fw-parser"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843d1585c97999094a65d2bc3d83b0968f3a88d961f778854f969255b323f7a3"
+dependencies = [
+ "deku",
+ "esp-println",
+ "log",
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
+name = "sdrr-fw-parser"
+version = "0.4.2"
 dependencies = [
  "deku",
  "esp-println",
