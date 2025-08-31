@@ -45,8 +45,8 @@ impl<R: OneRomReader> FwHandler<R> for OneRomHandler<R> {
     }
 
     async fn parse_info(&mut self) ->  Result<Box<dyn FwInfo>, FwError<R::Error>> {
-        let sdrr = self.parser.parse().await;
-        Ok(Box::new(FwOneRomLab(sdrr)))
+        let lab = self.parser.parse().await;
+        Ok(Box::new(FwOneRomLab(lab)))
     }
 }
 
@@ -70,7 +70,7 @@ impl FwInfo for FwOneRomLab {
             }
             None => {
                 serde_json::json!({
-                    "error": "No flash content found in SDRR firmware"
+                    "error": "No flash content found in One ROM Lab firmware"
                 })
             }
         }
@@ -98,7 +98,7 @@ impl JsonToHtmler {
         match serde_json::from_value(data) {
             Ok(info) => Ok(info),
             Err(e) => Err(FormatterError::JsonToHtml(format!(
-                "Failed to parse SDRR info: {e}"
+                "Failed to parse One ROM Lab info: {e}"
             ))),
         }
     }
@@ -106,7 +106,7 @@ impl JsonToHtmler {
 
 impl JsonToHtml for JsonToHtmler {
     fn can_handle(&self, data: &serde_json::Value) -> bool {
-        data.get("_af_fw_type").is_some_and(|t| t == "SdrrInfo")
+        data.get("_af_fw_type").is_some_and(|t| t == AF_FW_TYPE)
     }
 
 
@@ -115,11 +115,12 @@ impl JsonToHtml for JsonToHtmler {
         let flash = info.flash;
         let ram = info.ram;
 
-        let major_version = flash.as_ref().map_or("", |f| f.major_version.as_str());
-        let minor_version = flash.as_ref().map_or("", |f| f.minor_version.as_str());
-        let patch_version = flash.as_ref().map_or("", |f| f.patch_version.as_str());
-        let hardware = flash.as_ref().map_or("", |f| f.hw_rev.as_str());
+        let major_version = flash.as_ref().map_or("?", |f| f.major_version.as_str());
+        let minor_version = flash.as_ref().map_or("?", |f| f.minor_version.as_str());
+        let patch_version = flash.as_ref().map_or("?", |f| f.patch_version.as_str());
+        let hardware = flash.as_ref().map_or("Unknown", |f| f.hw_rev.as_str());
         let rom_data_ptr = ram.as_ref().map_or(0, |f| f.rom_data_ptr);
+        let rtt_ptr = flash.as_ref().map_or(0, |f| f.rtt_ptr);
 
         let html = format!(r#"
 <tr>
@@ -135,8 +136,12 @@ impl JsonToHtml for JsonToHtmler {
 <td>{}</td>
 </tr>
 <tr>
-<td class="label-col"><strong>Version:</strong></td>
-<td>{:010X}</td>
+<td class="label-col"><strong>ROM data:</strong></td>
+<td>{:#010X}</td>
+</tr>
+<tr>
+<td class="label-col"><strong>RTT data:</strong></td>
+<td>{:#010X}</td>
 </tr>
         "#,
         major_version,
@@ -144,6 +149,7 @@ impl JsonToHtml for JsonToHtmler {
         patch_version,
         hardware,
         rom_data_ptr,
+        rtt_ptr,
     );
 
         Ok(html)
@@ -153,7 +159,7 @@ impl JsonToHtml for JsonToHtmler {
                 let html = format!(r#"
 <div class="card">
 <h2>One ROM Lab</h2>
-<table>
+<table class="device-info">
 {}
 </table>
 </div>

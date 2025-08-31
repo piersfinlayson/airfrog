@@ -129,7 +129,6 @@ name = "airfrog-core"
 version = "0.1.2"
 dependencies = [
  "esp-alloc",
- "sdrr-fw-parser 0.4.0",
  "static_assertions",
 ]
 
@@ -2800,19 +2799,6 @@ name = "sdrr-fw-parser"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0916a9da5d5e77a044fb569fc3773d14ca3e05f84b18e84aff7f54246d0b951"
-dependencies = [
- "deku",
- "esp-println",
- "log",
- "serde",
- "static_assertions",
-]
-
-[[package]]
-name = "sdrr-fw-parser"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843d1585c97999094a65d2bc3d83b0968f3a88d961f778854f969255b323f7a3"
 dependencies = [
  "deku",
  "esp-println",

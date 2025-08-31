@@ -20,6 +20,5 @@ name = "airfrog_core"
 path = "./src/lib.rs"
 
 [dependencies]
-sdrr-fw-parser = { version = "0.4", default-features = false }
 esp-alloc = "0.8.0"
 static_assertions = "1.1"

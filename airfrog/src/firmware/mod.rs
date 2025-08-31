@@ -23,7 +23,7 @@ use strum::EnumIter;
 
 use sdrr_fw_parser::Reader;
 
-use crate::http::json::json_to_html;
+use crate::http::json::default_formatter;
 use airfrog_core::Mcu;
 
 pub(crate) const AF_FW_TYPE_KEY: &str = "_af_fw_type";
@@ -147,7 +147,7 @@ impl JsonToHtml for DefaultFormatter {
 
     /// Convert a JSON value to HTML representation
     fn complete(&self, value: Value) -> Result<String, FormatterError> {
-        Ok(json_to_html(value, 0))
+        Ok(default_formatter(value))
     }
 }
 

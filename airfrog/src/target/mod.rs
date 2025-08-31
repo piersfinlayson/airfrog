@@ -1128,7 +1128,8 @@ impl<'a> Reader for &mut Target<'a> {
     type Error = AirfrogError;
 
     async fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        let word_count = buf.len().div_ceil(4);
+        let offset = (addr & 3) as usize;
+        let word_count = (offset + buf.len()).div_ceil(4);
         let mut words = vec![0u32; word_count];
 
         self.swd

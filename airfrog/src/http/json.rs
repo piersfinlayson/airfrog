@@ -12,6 +12,22 @@ use serde_json::Value;
 
 use crate::{AirfrogError, ErrorKind};
 
+/// Default firmware formatter.
+pub(crate) fn default_formatter(data: Value) -> String {
+    let json_html = json_to_html(data, 0);
+    let html = format!(r#"
+<div class=\"card\">
+<h2>Unrecognised Firmware</h2>
+<table>
+{json_html}
+</table>
+</div>
+<br/>
+<br/>
+"#);
+    html
+}
+
 /// A function that provides basic JSON to HTML conversion.  Used by the
 /// firmware default formatter, in case a firmware implementation does not
 /// provide a custom HTML formatter.
