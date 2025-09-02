@@ -392,7 +392,7 @@ impl Response {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusCode {
     Ok = 200,
     Found = 302,

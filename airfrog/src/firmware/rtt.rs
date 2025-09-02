@@ -22,14 +22,9 @@ use crate::target::{
     Response as TargetResponse,
 };
 
-static RTT_CMD_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    (
-        Command,
-        Option<Sender<CriticalSectionRawMutex, Result<Response, Error>, 1>>,
-    ),
-    2,
-> = Channel::new();
+type RspCh = Option<Sender<'static, CriticalSectionRawMutex, Result<Response, Error>, 1>>;
+type ChArg = (Command, RspCh);
+static RTT_CMD_CHANNEL: Channel<CriticalSectionRawMutex, ChArg, 2> = Channel::new();
 static RTT_CTRL_SIGNAL: Signal<CriticalSectionRawMutex, Control> = Signal::new();
 
 const BUFFER_SIZE: usize = 4096;
@@ -38,8 +33,8 @@ const MAX_BYTES_PER_READ: usize = 256;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum State {
-    Start,
-    Stop,
+    Started,
+    Stopped,
 }
 
 #[derive(PartialEq, Eq)]
@@ -327,7 +322,7 @@ impl Rtt {
         target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
     ) -> Self {
         Self {
-            state: State::Stop,
+            state: State::Stopped,
             rtt_cb: None,
             rtt_up_buf: None,
             local_buf: LocalBuf::default(),
@@ -346,7 +341,7 @@ impl Rtt {
         let start_aligned = location & !3;
         let end_aligned = (location + num_bytes as u32 + 3) & !3;
         let aligned_bytes = (end_aligned - start_aligned) as usize;
-        
+
         // Read aligned chunk
         let command = TargetCommand::ReadMemBulk {
             addr: format!("{start_aligned:#010X}"),
@@ -453,10 +448,10 @@ impl Rtt {
         // Only store the CB/buf now we've succeeded
         self.rtt_cb = Some(rtt_cb);
         self.rtt_up_buf = Some(rtt_up_buf);
-        if self.state != State::Start {
+        if self.state != State::Started {
             // If we're not already started, set the state to Start
             info!("Info:  RTT started");
-            self.state = State::Start;
+            self.state = State::Started;
         } else {
             debug!("Info:  RTT re-started at {location:#010X}");
         }
@@ -467,7 +462,7 @@ impl Rtt {
     fn stop(&mut self) {
         self.rtt_cb = None;
         self.rtt_up_buf = None;
-        self.state = State::Stop;
+        self.state = State::Stopped;
 
         info!("Info:  RTT stopped");
     }
@@ -480,8 +475,8 @@ impl Rtt {
         let response = match command {
             Command::_GetState => Ok(Response::State { state: self.state }),
             Command::Read { max } => match self.state {
-                State::Stop => Err(Error::Stopped),
-                State::Start => {
+                State::Stopped => Err(Error::Stopped),
+                State::Started => {
                     let max = core::cmp::min(max, MAX_BYTES_PER_READ);
                     let mut data = vec![0u8; max];
                     let bytes_read = self.local_buf.read_data(&mut data);
@@ -503,21 +498,23 @@ impl Rtt {
             return Err(Error::Full);
         }
 
-        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
+        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?;
 
         // Check for reset
         let cur_read_pos = self.read_word(stored_buf.read_pos_field_loc()).await?;
         if cur_read_pos != stored_buf.read_pos {
-            info!("RTT task detected device reset - read position changed from {} to {}", 
-                stored_buf.read_pos, cur_read_pos);
+            info!(
+                "RTT task detected device reset - read position changed from {} to {}",
+                stored_buf.read_pos, cur_read_pos
+            );
             let location = self.rtt_cb.as_ref().ok_or(Error::Stopped)?.location;
             self.stop();
             self.start(location).await?;
-            stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
+            stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?;
         }
 
         stored_buf.write_pos = self.read_word(stored_buf.write_pos_field_loc()).await?;
-        
+
         if stored_buf.write_pos == stored_buf.read_pos {
             return Ok(());
         }
@@ -533,10 +530,14 @@ impl Rtt {
             // Wrapped - read both chunks and concatenate
             let first_chunk = (stored_buf.size - stored_buf.read_pos) as usize;
             let first_size = core::cmp::min(to_read, first_chunk);
-            let mut data = self.read_bytes(stored_buf.cur_read_loc(), first_size).await?;
-            
+            let mut data = self
+                .read_bytes(stored_buf.cur_read_loc(), first_size)
+                .await?;
+
             if first_size < to_read {
-                let mut second = self.read_bytes(stored_buf.data_ptr, to_read - first_size).await?;
+                let mut second = self
+                    .read_bytes(stored_buf.data_ptr, to_read - first_size)
+                    .await?;
                 data.append(&mut second);
             }
             data
@@ -546,7 +547,8 @@ impl Rtt {
 
         self.local_buf.write_data(&data);
         stored_buf.read_pos = (stored_buf.read_pos + data.len() as u32) % stored_buf.size;
-        self.write_word(stored_buf.read_pos_field_loc(), stored_buf.read_pos).await?;
+        self.write_word(stored_buf.read_pos_field_loc(), stored_buf.read_pos)
+            .await?;
         self.rtt_up_buf = Some(stored_buf);
 
         Ok(())
@@ -567,7 +569,7 @@ pub async fn rtt_task(
     let mut error_state = false;
     loop {
         // Wait for a command, and, if we're running, data from the target
-        let command = if rtt.state == State::Stop {
+        let command = if rtt.state == State::Stopped {
             // When stopped, listen for both data commands (to reject) and control (to start)
             match select(RTT_CMD_CHANNEL.receive(), RTT_CTRL_SIGNAL.wait()).await {
                 Either::First(cmd) => Some(cmd),
@@ -587,11 +589,9 @@ pub async fn rtt_task(
                     info!("Error: Hit error receiving RTT data {e:?}");
                     error_state = true;
                 }
-            } else {
-                if error_state {
-                    info!("Info:  RTT data received successfully");
-                    error_state = false;
-                }
+            } else if error_state {
+                info!("Info:  RTT data received successfully");
+                error_state = false;
             }
 
             match select3(

@@ -74,9 +74,6 @@ pub struct Status {
     // MCU type of the target device, if available.
     pub mcu: Option<String>,
 
-    // Firmware type of the target device, if available.
-    pub firmware: Option<String>,
-
     // Settings for the target.
     pub settings: Settings,
 }

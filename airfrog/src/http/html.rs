@@ -6,19 +6,19 @@
 
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use strum::IntoEnumIterator;
 
 use crate::AirfrogError;
 use crate::config::{CONFIG, NetMode};
 use crate::device::Device;
-use crate::firmware::{JsonToHtml, JsonToHtmlers};
+use crate::http::StatusCode;
 use crate::http::assets::{
     BROWSER_HTML_PATH, CONFIG_UPDATE_JS_PATH, CSS_PATH, FAVICON_PATH, FOOTER_HTML_PATH, LOGO_PATH,
     MEMORY_CSS_PATH, MEMORY_JS_PATH, RTT_HTML_PATH, RTT_JS_PATH,
 };
-use crate::target::{Response, Settings, Status};
+use crate::target::{Settings, Status};
 use crate::{
     AIRFROG_BUILD_DATE, AIRFROG_BUILD_TIME, AIRFROG_HOME_PAGE, AUTHOR, AUTHOR_EMAIL,
     FEATURES_LOWERCASE_STR, PKG_LICENSE, PKG_VERSION, PROFILE, RUSTC_VERSION,
@@ -40,7 +40,28 @@ impl HtmlContent {
 
     fn footer() -> String {
         format!(
-            r#"<div id="ft-phdr"></div><script>fetch('{FOOTER_HTML_PATH}').then(r => r.text()).then(html => document.getElementById('ft-phdr').innerHTML = html);</script>"#
+            r#"<div id="ft-phdr"></div><script>
+fetch('{FOOTER_HTML_PATH}')
+  .then(r => r.text())
+  .then(html => {{
+    document.getElementById('ft-phdr').innerHTML = html;
+    // Now fetch dynamic tool configuration
+    return fetch('/www/fw-buttons');
+  }})
+  .then(r => r.json())
+  .then(tools => {{
+    const targetGrid = document.querySelector('.card:nth-child(2) .tool-grid');
+    if (targetGrid && tools.buttons) {{
+      tools.buttons.forEach(button => {{
+        const link = document.createElement('a');
+        link.href = button.path;
+        link.className = 'tool-link';
+        link.textContent = button.name;
+        targetGrid.appendChild(link);
+      }});
+    }}
+  }});
+</script>"#
         )
     }
 
@@ -63,7 +84,7 @@ impl From<AirfrogError> for HtmlContent {
 }
 pub(crate) fn html_summary(
     status: Option<Status>,
-    firmware: Option<serde_json::Value>,
+    fw_kvp: Option<Vec<(String, String)>>,
     output_fw_summary: bool,
 ) -> String {
     let connected = status.as_ref().is_some_and(|s| s.connected);
@@ -94,7 +115,7 @@ pub(crate) fn html_summary(
 
     let (mcu, fw_rows) = if output_fw_summary {
         if connected {
-            let firmware_html = if let Some(fw) = firmware {
+            let firmware_html = if let Some(fw) = fw_kvp {
                 html_firmware_summary(fw)
             } else {
                 None
@@ -213,53 +234,31 @@ fetch('{BROWSER_HTML_PATH}')
 }
 
 // Used by html_firmware_complete to generate the firmware summary
-fn html_firmware_summary(json: serde_json::Value) -> Option<String> {
-    let mut result = None;
-    for handler in JsonToHtmlers::iter() {
-        if handler.can_handle(&json) {
-            match handler.summary(json) {
-                Ok(fw) => {
-                    result = Some(fw);
-                    break;
-                }
-                Err(e) => {
-                    warn!("Failed to convert JSON to HTML: {e:?}");
-                    return None;
-                }
-            }
-        }
+fn html_firmware_summary(fw_kvp: Vec<(String, String)>) -> Option<String> {
+    if fw_kvp.is_empty() {
+        return None;
     }
-    result
+
+    // Turn key value pairs into table rows
+    let mut html = String::new();
+    for (key, value) in fw_kvp {
+        html.push_str(&format!(
+            r#"<tr>
+<td class="label-col"><strong>{key}:</strong></td>
+<td>{value}</td>
+</tr>
+"#,
+        ));
+    }
+
+    Some(html)
 }
 
-pub(crate) fn page_target_firmware(response: Response) -> HtmlContent {
-    let json = response.data;
-    let fw_info_html = if let Some(json) = json {
-        let mut result = None;
-        for handler in JsonToHtmlers::iter() {
-            if handler.can_handle(&json) {
-                match handler.complete(json) {
-                    Ok(fw) => {
-                        result = Some(fw);
-                        break;
-                    }
-                    Err(e) => {
-                        warn!("Failed to convert JSON to HTML: {e:?}");
-                        result = Some("<div id=\"fw-info\" class=\"card\"><p>Unable to parse firmware information.</p></div>".to_string());
-                        break;
-                    }
-                }
-            }
-        }
-        result.unwrap_or(
-            "<div id=\"fw-info\" class=\"card\"><p>Unable to parse firmware type.</p></div>"
-                .to_string(),
-        )
-    } else {
+pub(crate) fn page_target_firmware(fw_info: Option<String>) -> HtmlContent {
+    let fw_info_html = fw_info.unwrap_or(
         "<div id=\"fw-info\" class=\"card\"><p>No firmware information available.</p><br/><br/><br/><br/><br/></div>"
             .to_string()
-    };
-
+    );
     let body = format!(
         r#"
 <h1>Target Firmware Information</h1>
@@ -620,8 +619,8 @@ pub(crate) async fn settings_net_stored() -> String {
 }
 
 /// Generate Airfrog Settings page.
-pub(crate) async fn page_settings(response: Response) -> HtmlContent {
-    let sr_form = if let Some(status) = response.status {
+pub(crate) async fn page_settings(status: Option<Status>) -> HtmlContent {
+    let sr_form = if let Some(status) = status {
         settings_swd_runtime(&status.settings)
     } else {
         "<p>Unable to retrieve Airfrog settings</p><br/><br/><br/>".to_string()
@@ -651,6 +650,19 @@ pub(crate) async fn page_settings(response: Response) -> HtmlContent {
 "#
     );
 
+    HtmlContent::new(body)
+}
+
+pub(crate) fn page_firmware_custom(status_code: StatusCode, html: Option<String>) -> HtmlContent {
+    let body = match (status_code, html) {
+        (StatusCode::Ok, Some(html)) => html,
+        (StatusCode::Ok, None) => "<h1>Firmware</h1><div class=\"card\"><p>No content provided.</p><br/><br/><br/><br/><br/></div>".to_string(),
+        (status_code, _) => format!(
+            "<h1>Firmware</h1><div class=\"card\"><p>Firmware page could not be loaded due to error: {}.</p><br/><br/><br/><br/><br/></div>",
+            status_code.as_str()
+        ),
+
+    };
     HtmlContent::new(body)
 }
 
