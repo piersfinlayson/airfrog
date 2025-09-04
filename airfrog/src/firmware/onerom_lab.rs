@@ -20,7 +20,8 @@ use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 
 use sdrr_fw_parser::{LabParser, OneRomLab};
-use onerom_protocol::lab::{Command as RpcCommand, Response as RpcResponse};
+use onerom_protocol::Error as OneRomError;
+use onerom_protocol::lab::{Command as RpcCommand, RomMetadata};
 
 use crate::firmware::Error;
 use crate::firmware::assets::ONEROM_LAB_READROM_JS_PATH;
@@ -319,7 +320,7 @@ impl<R: Reader + 'static, W: Writer + 'static> OneRomLabFirmware<R, W> {
         ).request(&RpcCommand::ReadRom.as_bytes()).await?;
 
         // Parse the response
-        let rom_data = RomData::from_buffer(&rsp)?;
+        let rom_data = RomMetadata::from_buffer(&rsp)?;
 
         // Turn the ROM data into JSON
         let json = match rom_data.as_ref() {
@@ -331,80 +332,6 @@ impl<R: Reader + 'static, W: Writer + 'static> OneRomLabFirmware<R, W> {
         };
 
         Ok((StatusCode::Ok, Some(json)))
-    }
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct RomData {
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "Part Number")]
-    part_number: String,
-    #[serde(rename = "Checksum")]
-    checksum: u32,
-    #[serde(rename = "SHA1 Digest")]
-    sha1: [u8; 20],
-}
-
-impl RomData {
-    fn from_buffer(buf: &[u8]) -> Result<Option<Self>, CustomError> {
-        let mut pos = 0;
-
-        // Get Response code
-        if buf.len() < 4 {
-            return Err(CustomError::Custom("Buffer too short for response".to_string()));
-        }
-        let rsp_u32 = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-        let response: RpcResponse  = rsp_u32.into();
-        pos += 4;
-        match response {
-            RpcResponse::RomMetadata => (), // Continue
-            RpcResponse::NoRom => {
-                debug!("Unknown ROM or no ROM connected");
-                return Ok(None);
-            }
-            _ => {
-                warn!("Unexpected response code: {rsp_u32:#010X} {response:?}");
-                return Err(CustomError::Custom(format!(
-                    "Unexpected response code: {response:?}"
-                )));
-            }
-        }
-        
-        // Parse name (null-terminated string)
-        let name_end = buf[pos..].iter().position(|&b| b == 0)
-            .ok_or_else(|| CustomError::Custom("Name string not null-terminated".to_string()))?;
-        let name = String::from_utf8(buf[pos..pos + name_end].to_vec())
-            .map_err(|_| CustomError::Custom("Invalid UTF-8 in name".to_string()))?;
-        pos += name_end + 1; // Skip null terminator
-        
-        // Parse part number (null-terminated string)
-        let part_end = buf[pos..].iter().position(|&b| b == 0)
-            .ok_or_else(|| CustomError::Custom("Part number string not null-terminated".to_string()))?;
-        let part_number = String::from_utf8(buf[pos..pos + part_end].to_vec())
-            .map_err(|_| CustomError::Custom("Invalid UTF-8 in part number".to_string()))?;
-        pos += part_end + 1; // Skip null terminator
-        
-        // Parse 32-bit checksum (little endian)
-        if buf.len() < pos + 4 {
-            return Err(CustomError::Custom("Buffer too short for checksum".to_string()));
-        }
-        let checksum = u32::from_le_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]);
-        pos += 4;
-        
-        // Parse 20-byte SHA1
-        if buf.len() < pos + 20 {
-            return Err(CustomError::Custom("Buffer too short for SHA1".to_string()));
-        }
-        let mut sha1 = [0u8; 20];
-        sha1.copy_from_slice(&buf[pos..pos + 20]);
-        
-        Ok(Some(RomData {
-            name,
-            part_number,
-            checksum,
-            sha1,
-        }))
     }
 }
 
@@ -438,5 +365,11 @@ impl From<CustomError> for Error {
             CustomError::FwError(fw_err) => return fw_err,
             CustomError::Custom(details) => Error::Custom(details),
         }
+    }
+}
+
+impl From<OneRomError> for CustomError {
+    fn from(err: OneRomError) -> Self {
+        CustomError::Custom(format!("One ROM Lab Error: {err:?}"))
     }
 }
