@@ -15,6 +15,8 @@
 //
 // MIT License
 
+use airfrog_core::Mcu;
+use airfrog_rpc::io::{Reader, Writer};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -24,15 +26,12 @@ use embassy_time::{Duration, TimeoutError, with_timeout};
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 
-use airfrog_core::Mcu;
-use airfrog_rpc::io::Reader;
-
 use crate::{
-    firmware::{Error, FirmwareReader},
+    firmware::{Error, FirmwareReader, FirmwareWriter},
     http::{Method, StatusCode},
 };
 
-pub const FIRMWARE_TIMEOUT: Duration = Duration::from_millis(2000);
+pub const FIRMWARE_DECODE_TIMEOUT: Duration = Duration::from_millis(2000);
 
 /// Custom firmware types.
 ///
@@ -60,7 +59,7 @@ impl core::fmt::Display for FirmwareType {
 pub(crate) struct FirmwareRegistry;
 
 impl FirmwareRegistry {
-    const DECODERS: &'static [&'static dyn Decoder<FirmwareReader>] = &[
+    const DECODERS: &'static [&'static dyn Decoder<FirmwareReader, FirmwareWriter>] = &[
         &crate::firmware::onerom::OneRomDecoder::<FirmwareReader>::new(),
         &crate::firmware::onerom_lab::OneRomLabDecoder::<FirmwareReader>::new(),
     ];
@@ -72,33 +71,33 @@ impl FirmwareRegistry {
     pub async fn detect_and_decode(
         mcu: &Mcu,
         reader: &mut FirmwareReader,
-    ) -> Option<Box<dyn Firmware<FirmwareReader>>> {
+    ) -> Option<Box<dyn Firmware<FirmwareReader, FirmwareWriter>>> {
         for decoder in Self::DECODERS {
-            match with_timeout(FIRMWARE_TIMEOUT, decoder.detect(mcu, reader)).await {
+            match with_timeout(FIRMWARE_DECODE_TIMEOUT, decoder.detect(mcu, reader)).await {
                 Err(TimeoutError) => {
                     warn!(
-                        "Timeout during firmware detection for {}",
+                        "Error: Timeout during firmware detection for {}",
                         decoder.fw_type()
                     );
                     continue;
                 }
                 Ok(Some(fw_type)) => {
-                    info!("Detected firmware: {fw_type}");
-                    match with_timeout(FIRMWARE_TIMEOUT, decoder.decode(mcu, reader)).await {
+                    info!("OK:   Detected firmware: {fw_type}");
+                    match with_timeout(FIRMWARE_DECODE_TIMEOUT, decoder.decode(mcu, reader)).await {
                         Ok(Ok(firmware)) => {
                             info!("Successfully decoded firmware: {fw_type}");
                             return Some(firmware);
                         }
                         Ok(Err(e)) => {
-                            warn!("Decoder {fw_type} failed to decode firmware {e:?}");
+                            warn!("Error: Decoder {fw_type} failed to decode firmware {e:?}");
                         }
                         Err(TimeoutError) => {
-                            warn!("Timeout during firmware decoding for {fw_type}");
+                            warn!("Error: Timeout during firmware decoding for {fw_type}");
                         }
                     }
                 }
                 Ok(None) => {
-                    trace!("Decoder {} did not detect firmware", decoder.fw_type());
+                    trace!("Info:  Decoder {} did not detect firmware", decoder.fw_type());
                     continue;
                 }
             }
@@ -116,7 +115,7 @@ impl FirmwareRegistry {
 /// Async methods taking longer than [`FIRMWARE_TIMEOUT`] to run will be
 /// cancelled.
 #[async_trait(?Send)]
-pub trait Decoder<R: Reader> {
+pub trait Decoder<R: Reader, W: Writer> {
     /// Returns the factory's supported firmware type.  A single factory can
     /// only support a single firmware type.
     fn fw_type(&self) -> FirmwareType;
@@ -135,7 +134,7 @@ pub trait Decoder<R: Reader> {
     /// When implementing, ensure that enough information is retrieved and
     /// stored in the [`Firmware<R>`] object to be able to handle the
     /// [`Firmware`] trait methods that do not permit [`Reader`] use.
-    async fn decode(&self, mcu: &Mcu, reader: &mut R) -> Result<Box<dyn Firmware<R>>, Error>;
+    async fn decode(&self, mcu: &Mcu, reader: &mut R) -> Result<Box<dyn Firmware<R, W>>, Error>;
 }
 
 /// Trait for implementing custom Firmware type plugins for Airfrog.
@@ -151,7 +150,7 @@ pub trait Decoder<R: Reader> {
 /// Async methods taking longer than [`FIRMWARE_TIMEOUT`] to run will be
 /// cancelled.
 #[async_trait(?Send)]
-pub trait Firmware<R: Reader> {
+pub trait Firmware<R: Reader, W: Writer> {
     /// Returns this firmware type.
     ///
     /// Reading from the Target is not permitted in this method.
@@ -208,6 +207,7 @@ pub trait Firmware<R: Reader> {
         path: String,
         body: Option<Value>,
         reader: &mut R,
+        writer: &mut W,
     ) -> Result<(StatusCode, Option<Value>), Error>;
 
     /// Handle a WWW request, which was received at /www/firmware/path.  This
@@ -224,6 +224,7 @@ pub trait Firmware<R: Reader> {
         path: String,
         body: Option<String>,
         reader: &mut R,
+        writer: &mut W,
     ) -> Result<(StatusCode, Option<String>), Error>;
 }
 

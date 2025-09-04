@@ -460,11 +460,14 @@ impl Rtt {
     }
 
     fn stop(&mut self) {
+        if self.state != State::Stopped {
+            info!("Info:  RTT stopped");
+            self.state = State::Stopped;
+        } else {
+            trace!("Info:  RTT already stopped");
+        }
         self.rtt_cb = None;
         self.rtt_up_buf = None;
-        self.state = State::Stopped;
-
-        info!("Info:  RTT stopped");
     }
 
     async fn handle_command(

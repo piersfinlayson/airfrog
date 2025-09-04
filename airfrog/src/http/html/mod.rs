@@ -24,6 +24,10 @@ use crate::{
     FEATURES_LOWERCASE_STR, PKG_LICENSE, PKG_VERSION, PROFILE, RUSTC_VERSION,
 };
 
+pub mod build;
+
+use build::HtmlBuilder;
+
 /// An HTML content object used to return HTML responses to picoserve
 pub struct HtmlContent(pub String);
 
@@ -351,21 +355,21 @@ fn html_system_info(flash_size_bytes: usize) -> String {
     // Turn flash size into KB
     let flash_size_kb = flash_size_bytes / 1024;
 
-    format!(
-        r#"
-<div class="card">
-<h2>System</h2>
-  <table class="device-info">
-    <tr><td class="label-col" style="width: 300px;"><strong>MCU:</strong></td><td>{mcu}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Flash size:</strong></td><td>{flash_size_kb} KB</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Clock Speed:</strong></td><td>{clock_speed} MHz</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>MAC Address:</strong></td><td>{mac_address}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Last Reset Reason:</strong></td><td>{rr_str}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Uptime:</strong></td><td>{ut_days}d {ut_hours}h {ut_minutes}m {ut_seconds}s</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Heap:</strong></td><td>{heap_used}/{heap_size} bytes ({heap_pct:.1}% used)</td></tr>
-  </table>
-</div>"#,
-    )
+    HtmlBuilder::new()
+        .div().class("card").child(|card| {
+            card.h2("System")
+                .with_table(Some("device-info"), |table| {
+                    table
+                        .row(|row| row.with_width("300px").label_cell("MCU:").cell(&mcu))
+                        .row(|row| row.with_width("300px").label_cell("Flash size:").cell(&format!("{} KB", flash_size_kb)))
+                        .row(|row| row.with_width("300px").label_cell("Clock Speed:").cell(&format!("{} MHz", clock_speed)))
+                        .row(|row| row.with_width("300px").label_cell("MAC Address:").cell(&mac_address))
+                        .row(|row| row.with_width("300px").label_cell("Last Reset Reason:").cell(&rr_str))
+                        .row(|row| row.with_width("300px").label_cell("Uptime:").cell(&format!("{}d {}h {}m {}s", ut_days, ut_hours, ut_minutes, ut_seconds)))
+                        .row(|row| row.with_width("300px").label_cell("Heap:").cell(&format!("{}/{} bytes ({:.1}% used)", heap_used, heap_size, heap_pct)))
+                })
+        })
+        .build()
 }
 
 // Airfrog build level information
@@ -375,34 +379,34 @@ fn html_build_info() -> String {
         .strip_prefix("rustc ")
         .unwrap_or(RUSTC_VERSION);
 
-    format!(
-        r#"
-<div class="card">
-  <h2>Build</h2>
-  <table class="device-info">
-    <tr><td class="label-col" style="width: 300px;"><strong>Airfrog Version:</strong></td><td>v{PKG_VERSION}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Build Time and Date:</strong></td><td>{AIRFROG_BUILD_TIME} {AIRFROG_BUILD_DATE}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Build Features:</strong></td><td>{FEATURES_LOWERCASE_STR}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Build Profile:</strong></td><td>{PROFILE}</td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Rust Version:</strong></td><td>{rust}</td></tr>
-  </table>
-</div>"#
-    )
+    HtmlBuilder::new()
+        .div().class("card").child(|card| {
+            card.h2("Build")
+                .with_table(Some("device-info"), |table| {
+                    table
+                        .row(|row| row.with_width("300px").label_cell("Airfrog Version:").cell(&format!("v{}", PKG_VERSION)))
+                        .row(|row| row.with_width("300px").label_cell("Build Time and Date:").cell(&format!("{} {}", AIRFROG_BUILD_TIME, AIRFROG_BUILD_DATE)))
+                        .row(|row| row.with_width("300px").label_cell("Build Features:").cell(FEATURES_LOWERCASE_STR))
+                        .row(|row| row.with_width("300px").label_cell("Build Profile:").cell(PROFILE))
+                        .row(|row| row.with_width("300px").label_cell("Rust Version:").cell(rust))
+                })
+        })
+        .build()
 }
 
 // Airfrog project level information
 fn html_project_info() -> String {
-    format!(
-        r#"
-<div class="card">
-  <h2>Project</h2>
-  <table class="device-info">
-    <tr><td class="label-col" style="width: 300px;"><strong>Homepage:</strong></td><td><a href="https://{AIRFROG_HOME_PAGE}">{AIRFROG_HOME_PAGE}</a></td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Author:</strong></td><td><a href="mailto:{AUTHOR_EMAIL}?subject=Airfrog">{AUTHOR}</a></td></tr>
-    <tr><td class="label-col" style="width: 300px;"><strong>Licence:</strong></td><td>{PKG_LICENSE}</td></tr>
-  </table>
-</div>"#
-    )
+    HtmlBuilder::new()
+        .div().class("card").child(|card| {
+            card.h2("Project")
+                .with_table(Some("device-info"), |table| {
+                    table
+                        .row(|row| row.with_width("300px").label_cell("Homepage:").link_cell(&format!("https://{}", AIRFROG_HOME_PAGE), AIRFROG_HOME_PAGE))
+                        .row(|row| row.with_width("300px").label_cell("Author:").link_cell(&format!("mailto:{}?subject=Airfrog", AUTHOR_EMAIL), AUTHOR))
+                        .row(|row| row.with_width("300px").label_cell("Licence:").cell(PKG_LICENSE))
+                })
+        })
+        .build()
 }
 
 /// Generate Airfrog Information page.
@@ -657,8 +661,15 @@ pub(crate) fn page_firmware_custom(status_code: StatusCode, html: Option<String>
     let body = match (status_code, html) {
         (StatusCode::Ok, Some(html)) => html,
         (StatusCode::Ok, None) => "<h1>Firmware</h1><div class=\"card\"><p>No content provided.</p><br/><br/><br/><br/><br/></div>".to_string(),
-        (status_code, _) => format!(
-            "<h1>Firmware</h1><div class=\"card\"><p>Firmware page could not be loaded due to error: {}.</p><br/><br/><br/><br/><br/></div>",
+        (status_code, _) => format!(r#"<h1>Firmware</h1>
+<div class=\"card\">
+<p>Firmware page could not be loaded due to error</p>
+<p>{}</p>
+<br/>
+<br/>
+<br/>
+<br/>
+</div>"#,
             status_code.as_str()
         ),
 

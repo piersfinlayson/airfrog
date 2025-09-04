@@ -15,6 +15,9 @@
 //! [`types`].
 
 extern crate alloc;
+
+use airfrog_core::Mcu;
+use airfrog_rpc::io::{Reader, Writer};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::String;
@@ -23,13 +26,11 @@ use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::signal::Signal;
+use embassy_time::{with_timeout, Duration, TimeoutError};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 use static_cell::make_static;
-
-use airfrog_core::Mcu;
-use airfrog_rpc::io::Reader;
 
 use crate::firmware::rtt::{Control as RttControl, rtt_control};
 use crate::http::{Method, StatusCode};
@@ -42,7 +43,8 @@ use crate::target::{
 mod onerom;
 mod onerom_lab;
 
-// Modules used elsewhere
+// Modules used elsewhere;
+pub(crate) mod assets;
 pub(crate) mod rtt;
 pub(crate) mod types;
 
@@ -55,6 +57,10 @@ static FW_CMD_CHANNEL: Channel<CriticalSectionRawMutex, ChArg, 2> = Channel::new
 
 // Control signal for Firmware task
 static FW_CTRL_SIGNAL: Signal<CriticalSectionRawMutex, Control> = Signal::new();
+
+/// Firmware runs a timer to ensure that async Firmware tasks do not take too
+/// long.  If they take longer than this Duration they are cancelled.
+pub const FIRMWARE_HANDLER_TIMEOUT: Duration = Duration::from_millis(2000);
 
 /// Firmware task commands.  Note that start/stop are controlled via the
 /// control signal, not commands.
@@ -142,15 +148,36 @@ pub enum Error {
     /// We got an error from Target
     Target,
 
-    /// An internal, alignment, error occurred
-    Alignment,
-
     /// Unknown Firmware
     UnknownFirmware,
 
     /// Used by firmware plugins to indicate a specific method is not
     /// implemented for that firmware type.
     NotImplemented,
+
+    /// Attempt to use a method which requires aligned access, with unaligned
+    /// address or data.
+    NotAligned,
+    
+    /// Custom firmware implementation error
+    Custom(String),
+
+    /// Timed out
+    Timeout,
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Stopped => write!(f, "Firmware task is stopped"),
+            Error::Target => write!(f, "Error from Target"),
+            Error::UnknownFirmware => write!(f, "Unknown firmware"),
+            Error::NotImplemented => write!(f, "Method not implemented for this firmware"),
+            Error::NotAligned => write!(f, "Address or data not 4-byte aligned"),
+            Error::Custom(s) => write!(f, "Error processing firmware: {s}"),
+            Error::Timeout => write!(f, "Operation timed out"),
+        }
+    }
 }
 
 /// Control signals for the Firmware Task.  Called by Target once connected,
@@ -194,7 +221,15 @@ pub async fn task(
         match select(FW_CTRL_SIGNAL.wait(), FW_CMD_CHANNEL.receive()).await {
             Either::First(control) => fw.handle_control(control).await,
             Either::Second((command, response_sender)) => {
-                fw.handle_command(command, response_sender).await
+                    match with_timeout(FIRMWARE_HANDLER_TIMEOUT, fw.handle_command(command.clone(), response_sender)).await {
+                        Ok(()) => (),
+                        Err(TimeoutError) => {
+                            warn!("Firmware command {command:?} timed out");
+                            if let Some(sender) = response_sender {
+                                sender.signal(Response::Error(Error::Timeout));
+                            }
+                        }
+                    }
             }
         }
     }
@@ -203,7 +238,7 @@ pub async fn task(
 struct Fw {
     state: State,
     mcu: Option<Mcu>,
-    firmware: Option<Box<dyn Firmware<FirmwareReader>>>,
+    firmware: Option<Box<dyn Firmware<FirmwareReader, FirmwareWriter>>>,
     target_sender: Sender<'static, CriticalSectionRawMutex, TargetRequest, REQUEST_CHANNEL_SIZE>,
     target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
 }
@@ -241,14 +276,18 @@ impl Fw {
         command: Command,
         response_sender: Option<&'static Signal<CriticalSectionRawMutex, Response>>,
     ) {
+        debug!("Exec:  Firmware command: {command:?}");
+
         // Handle stopped state first, and return
         if self.is_stopped() {
+            debug!("Info:  Firmware task is stopped");
             let response = if command == Command::GetStatus {
                 Response::Status(self.state)
             } else {
                 Response::Error(Error::Stopped)
             };
 
+            debug!("Info:  Response: {response:?}");
             if let Some(sender) = response_sender {
                 sender.signal(response);
             }
@@ -273,6 +312,7 @@ impl Fw {
             _ => None,
         };
         if let Some(response) = response {
+            debug!("Info:  Response: {response:?}");
             if let Some(sender) = response_sender {
                 sender.signal(response);
             }
@@ -283,6 +323,7 @@ impl Fw {
 
         // For the rest we need a firmware type, check if we have one
         if self.firmware.is_none() {
+            debug!("Info:  Response: {response:?}");
             if let Some(sender) = response_sender {
                 sender.signal(Response::Error(Error::UnknownFirmware));
             }
@@ -310,7 +351,8 @@ impl Fw {
                 .map_or_else(Response::Error, Response::Buttons),
             Command::HandleRest { method, path, body } => {
                 let mut reader = self.reader();
-                fw.handle_rest(method, path, body, &mut reader)
+                let mut writer = self.writer();
+                fw.handle_rest(method, path, body, &mut reader, &mut writer)
                     .await
                     .map_or_else(Response::Error, |(status, body)| Response::Json {
                         status,
@@ -319,7 +361,8 @@ impl Fw {
             }
             Command::HandleWww { method, path, body } => {
                 let mut reader = self.reader();
-                fw.handle_www(method, path, body, &mut reader)
+                let mut writer = self.writer();
+                fw.handle_www(method, path, body, &mut reader, &mut writer)
                     .await
                     .map_or_else(Response::Error, |(status, body)| Response::Html {
                         status,
@@ -327,6 +370,9 @@ impl Fw {
                     })
             }
         };
+
+        debug!("Info:  Response: {response:?}");
+
         if let Some(sender) = response_sender {
             sender.signal(response);
         }
@@ -336,6 +382,11 @@ impl Fw {
     // conflicts
     fn reader(&self) -> FirmwareReader {
         FirmwareReader::new(self.target_sender, self.target_response_signal)
+    }
+
+    // Create a new writer instance dynamically, ensures no borrow checker
+    fn writer(&self) -> FirmwareWriter {
+        FirmwareWriter::new(self.target_sender, self.target_response_signal)
     }
 
     async fn detect_and_decode_firmware(&mut self) -> FirmwareType {
@@ -353,16 +404,20 @@ impl Fw {
     }
 
     fn stop(&mut self) {
-        info!("Firmware task stopped");
+        if self.state != State::Stopped {
+            info!("Exec:  Firmware task stopped");
+            self.state = State::Stopped;
+        } else {
+            trace!("Info:  Firmware task already stopped");
+        }
         self.mcu = None;
-        self.state = State::Stopped;
         self.firmware = None;
 
         rtt_control(RttControl::Stop);
     }
 
     async fn start(&mut self, mcu: Mcu) {
-        info!("Firmware task started for MCU: {mcu}");
+        info!("Exec:  Firmware task started for MCU: {mcu}");
         self.mcu = Some(mcu);
         self.state = State::Started;
 
@@ -390,9 +445,6 @@ impl Fw {
 
 /// Reader instance used by custom Firmware implementations to read firmware
 /// data from the Target.
-///
-/// Ensure all reads are 4 byte aligned, and for a multiple of 4 bytes, or you
-/// you will receive Err(Error::Alignment)
 pub struct FirmwareReader {
     target_sender: Sender<'static, CriticalSectionRawMutex, TargetRequest, REQUEST_CHANNEL_SIZE>,
     target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
@@ -419,31 +471,28 @@ impl Reader for FirmwareReader {
     type Error = Error;
 
     async fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        if !addr.is_multiple_of(4) {
-            warn!("Address {addr} is not aligned to 4 bytes");
-            return Err(Error::Alignment);
-        }
-        if !buf.len().is_multiple_of(4) {
-            warn!("Buffer length {} is not aligned to 4 bytes", buf.len());
-            return Err(Error::Alignment);
-        }
+        trace!("Info:  FirmwareReader reading {:#010X} length {}", addr, buf.len());
+
+        let start_aligned = addr & !3;
+        let end_aligned = (addr + buf.len() as u32 + 3) & !3;
+        let count = ((end_aligned - start_aligned) / 4) as usize;
 
         // Build a Target request
-        let addr = format!("{addr:#010X}");
-        let count = buf.len() / 4;
-        let command = TargetCommand::ReadMemBulk { addr, count };
+        let addr_str = format!("{start_aligned:#010X}");
+        let command = TargetCommand::ReadMemBulk { addr: addr_str, count };
         let request = TargetRequest {
             command,
             response_signal: self.target_response_signal,
         };
 
-        self.target_sender.send(request).await;
+        trace!("Info:  FirmwareReader send command: {:?}", request.command);
 
-        // Send it
-        self.target_response_signal.wait().await;
+        self.target_sender.send(request).await;
 
         // Wait for the response
         let response = self.target_response_signal.wait().await;
+
+        trace!("Info:  FirmwareReader got response: {response:?}");
 
         // Handle errors
         if let Some(error) = response.error {
@@ -457,11 +506,28 @@ impl Reader for FirmwareReader {
 
         // Turn the data from json into bytes and copy into buf
         let data = response.data.unwrap();
-        let bytes = serde_json::from_value::<Vec<u8>>(data).map_err(|e| {
-            warn!("Failed to convert JSON to bytes: {e}");
+
+        let hex_strings = serde_json::from_value::<Vec<String>>(data).map_err(|e| {
+            warn!("Failed to convert JSON to Vec<String>: {e}");
             Error::Target
         })?;
-        buf.copy_from_slice(&bytes);
+
+        let byte_offset = (addr - start_aligned) as usize;
+        for (i, hex_str) in hex_strings.iter().enumerate() {
+            let value = u32::from_str_radix(hex_str.trim_start_matches("0x"), 16)
+                .map_err(|e| {
+                    warn!("Failed to parse hex string '{}': {e}", hex_str);
+                    Error::Target
+                })?;
+            let word_bytes = value.to_le_bytes();
+            
+            for (j, &byte) in word_bytes.iter().enumerate() {
+                let global_idx = i * 4 + j;
+                if global_idx >= byte_offset && global_idx - byte_offset < buf.len() {
+                    buf[global_idx - byte_offset] = byte;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -470,3 +536,91 @@ impl Reader for FirmwareReader {
         // No-op as we does not have a concept of "base address"
     }
 }
+
+/// Writer instance used by custom Firmware implementations to write data to
+/// the Target.
+/// 
+/// Unlike the Reader implementation, the writer MUST be used with 4-byte
+/// aligned writes only.
+pub struct FirmwareWriter {
+    target_sender: Sender<'static, CriticalSectionRawMutex, TargetRequest, REQUEST_CHANNEL_SIZE>,
+    target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+}
+
+impl FirmwareWriter {
+    fn new(
+        target_sender: Sender<
+            'static,
+            CriticalSectionRawMutex,
+            TargetRequest,
+            REQUEST_CHANNEL_SIZE,
+        >,
+        target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+    ) -> Self {
+        Self {
+            target_sender,
+            target_response_signal,
+        }
+    }
+}
+
+impl Writer for FirmwareWriter {
+    type Error = Error;
+
+    async fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
+        trace!("Info:  FirmwareWriter writing {:#010X} length {}", addr, data.len());
+
+        // Verify 4-byte alignment as required
+        if addr & 3 != 0 {
+            warn!("Write address {:#010X} is not 4-byte aligned", addr);
+            return Err(Error::NotAligned);
+        }
+        if data.len() & 3 != 0 {
+            warn!("Write data length {} is not a multiple of 4 bytes", data.len());
+            return Err(Error::NotAligned);
+        }
+
+        // Convert bytes to hex strings
+        let hex_strings: Vec<String> = data
+            .chunks_exact(4)
+            .map(|chunk| {
+                let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                format!("{:#010X}", word)
+            })
+            .collect();
+
+        // Build a Target request
+        let addr_str = format!("{addr:#010X}");
+        
+        let command = TargetCommand::WriteMemBulk { 
+            addr: addr_str, 
+            data: hex_strings 
+        };
+        let request = TargetRequest {
+            command,
+            response_signal: self.target_response_signal,
+        };
+
+        trace!("Info:  FirmwareWriter send command: {:?}", request.command);
+
+        self.target_sender.send(request).await;
+
+        // Wait for the response
+        let response = self.target_response_signal.wait().await;
+
+        trace!("Info:  FirmwareWriter got response: {response:?}");
+
+        // Handle errors
+        if let Some(error) = response.error {
+            warn!("Failed to write memory to target: {error}");
+            return Err(Error::Target);
+        }
+
+        Ok(())
+    }
+
+    fn update_base_address(&mut self, _new_base: u32) {
+        // No-op as we does not have a concept of "base address"
+    }
+}
+

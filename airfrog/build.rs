@@ -50,6 +50,7 @@ fn main() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir);
     minify_html_js("assets", out_path).unwrap();
+    minify_html_js("assets/firmware", out_path).unwrap();
 
     // Parse our partition table
     println!("cargo:rerun-if-changed={PART_CSV}");

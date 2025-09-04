@@ -17,7 +17,7 @@ use embassy_futures::select::{Either, select};
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::{InputPin, OutputPin};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -89,13 +89,17 @@ pub(crate) async fn task(
     info!("Exec:  Binary API started on port {BIN_API_PORT}");
 
     let mut reconnect_count: u32 = 0;
+    let mut refresh_keepalive_time: Instant = Instant::now() + TARGET_KEEPALIVE_DURATION;
     loop {
-        // Figure out how long select should wait for.
-        let dur = if !target.is_connected().await {
-            TARGET_RECONNECT_DURATION
-        } else {
-            TARGET_KEEPALIVE_DURATION
-        };
+        // Figure out how long select should wait for - use the keepalive/refresh
+        let now = Instant::now();
+        if refresh_keepalive_time < now {
+            refresh_keepalive_time = now + if !target.is_connected().await {
+                TARGET_RECONNECT_DURATION
+            } else {
+                TARGET_KEEPALIVE_DURATION
+            };
+        }
 
         // Set up the future based on whether we want a binary API or not
         #[cfg(feature = "bin-api")]
@@ -106,7 +110,7 @@ pub(crate) async fn task(
         #[cfg(not(feature = "bin-api"))]
         let first_sel = target.request_receiver.receive();
 
-        match select(first_sel, Timer::after(dur)).await {
+        match select(first_sel, Timer::at(refresh_keepalive_time)).await {
             Either::First(req_acc) => {
                 #[cfg(feature = "bin-api")]
                 match req_acc {
@@ -470,6 +474,7 @@ impl<'a> Target<'a> {
             }
         }
         .unwrap_or_else(|e| e.into());
+        trace!("Response: {:?}", response);
         request.response_signal.signal(response);
     }
 

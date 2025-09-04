@@ -25,8 +25,8 @@ use crate::device::DEVICE;
 use crate::firmware::rtt::{
     Command as RttCommand, Error as RttError, Response as RttResponse, rtt_command,
 };
-use crate::firmware::types::FIRMWARE_TIMEOUT;
 use crate::firmware::{Command as FirmwareCommand, Response as FirmwareResponse, fw_command_wait};
+use crate::firmware::assets::STATIC_FILES as FIRMWARE_STATIC_FILES;
 use crate::http::assets::{FAVICON, STATIC_FILES};
 use crate::http::html::{
     html_summary, page_dashboard, page_firmware_custom, page_info, page_settings,
@@ -43,6 +43,9 @@ use crate::target::{
     Response as TargetResponse,
 };
 use crate::{AirfrogError, ErrorKind, REBOOT_SIGNAL};
+
+/// How long Http will wait for a response from firmware
+pub const FIRMWARE_TIMEOUT: embassy_time::Duration = embassy_time::Duration::from_millis(5000);
 
 /// Main HTTP server object that handles incoming connections and requests.
 struct Server {
@@ -271,6 +274,11 @@ impl Server {
 
         // Handle statics
         for file in STATIC_FILES {
+            if path == file.path {
+                return Response::static_file(path, file);
+            }
+        }
+        for file in FIRMWARE_STATIC_FILES {
             if path == file.path {
                 return Response::static_file(path, file);
             }
@@ -551,6 +559,9 @@ impl Server {
             match with_timeout(FIRMWARE_TIMEOUT, self.handle_firmware_command(command)).await {
                 Err(TimeoutError) => (StatusCode::Timeout, None),
                 Ok(FirmwareResponse::Json { status, body }) => (status, body),
+                Ok(FirmwareResponse::Error(error)) => {
+                    (StatusCode::InternalServerError, Some(serde_json::json!({"error": error.to_string()})))
+                }
                 Ok(_) => (StatusCode::InternalServerError, None),
             };
 
@@ -567,7 +578,7 @@ impl Server {
     ) -> Response {
         match (method, raw_path) {
             (Method::Get, "/data") => {
-                // Return all of the receive RTT data
+                // Return all of the received RTT data
                 let cmd = RttCommand::Read { max: 256 };
                 rtt_command(cmd, self.rtt_rsp_ch.sender()).await;
                 match self.rtt_rsp_ch.receiver().receive().await {
@@ -585,6 +596,14 @@ impl Server {
                             StatusCode::InternalServerError,
                         ),
                     },
+                    Err(RttError::Stopped) => {
+                        trace!("RTT reader stopped");
+                        Response::status_code(
+                            response_format,
+                            Some(path),
+                            StatusCode::ServiceUnavailable,
+                        )
+                    }
                     Err(e) => {
                         error!("Failed to get RTT data: {e:?}");
                         Response::status_code(

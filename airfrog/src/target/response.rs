@@ -13,7 +13,7 @@ use airfrog_swd::protocol::{Speed, Version};
 use crate::AirfrogError;
 use crate::target::Settings;
 
-#[derive(serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, Default)]
 pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,

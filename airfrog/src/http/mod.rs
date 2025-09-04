@@ -361,7 +361,7 @@ impl Response {
         self
     }
 
-    pub fn static_file(path: &str, file: StaticFile) -> Self {
+    pub fn static_file(path: &str, file: &StaticFile) -> Self {
         let headers = if !file.headers.is_empty() {
             Some(
                 file.headers
@@ -463,3 +463,4 @@ pub struct Header {
     pub name: &'static str,
     pub value: &'static str,
 }
+

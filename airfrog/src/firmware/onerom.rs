@@ -5,12 +5,14 @@
 //! airfrog - One ROM Firmware handling
 
 use airfrog_core::Mcu;
-use airfrog_rpc::io::Reader;
+use airfrog_rpc::io::{Reader, Writer};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use async_trait::async_trait;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 
 use sdrr_fw_parser::{Parser, Sdrr as OneRom, SdrrInfo, SdrrRuntimeInfo, SdrrServe};
@@ -44,7 +46,7 @@ impl<R: Reader> OneRomDecoder<R> {
 }
 
 #[async_trait(?Send)]
-impl<R: Reader> Decoder<R> for OneRomDecoder<R> {
+impl<R: Reader, W: Writer> Decoder<R, W> for OneRomDecoder<R> {
     fn fw_type(&self) -> FirmwareType {
         FIRMWARE_TYPE
     }
@@ -54,6 +56,8 @@ impl<R: Reader> Decoder<R> for OneRomDecoder<R> {
             return None;
         }
 
+        debug!("Info:  Detecting One ROM firmware...");
+
         // Use the One ROM firmware parser to detect One ROM
         if self.parser(mcu, reader).detect().await {
             Some(FIRMWARE_TYPE)
@@ -62,7 +66,7 @@ impl<R: Reader> Decoder<R> for OneRomDecoder<R> {
         }
     }
 
-    async fn decode(&self, mcu: &Mcu, reader: &mut R) -> Result<Box<dyn Firmware<R>>, Error> {
+    async fn decode(&self, mcu: &Mcu, reader: &mut R) -> Result<Box<dyn Firmware<R, W>>, Error> {
         if !mcu.is_stm32f4() && !mcu.is_rp() {
             return Err(Error::UnknownFirmware);
         }
@@ -104,7 +108,7 @@ impl OneRomFirmware {
 }
 
 #[async_trait(?Send)]
-impl<R: Reader> Firmware<R> for OneRomFirmware {
+impl<R: Reader, W: Writer> Firmware<R, W> for OneRomFirmware {
     fn fw_type(&self) -> FirmwareType {
         FIRMWARE_TYPE
     }
@@ -115,7 +119,13 @@ impl<R: Reader> Firmware<R> for OneRomFirmware {
             .flash
             .as_ref()
             .and_then(|flash| flash.extra_info.as_ref())
-            .and_then(|info| Some(info.rtt_ptr))
+            .and_then(|info| {
+                if info.rtt_ptr != 0 {
+                    Some(info.rtt_ptr)
+                } else {
+                    None
+                }
+            })
     }
 
     fn get_summary_kvp(&self) -> Result<Vec<(String, String)>, Error> {
@@ -521,6 +531,7 @@ impl<R: Reader> Firmware<R> for OneRomFirmware {
         _path: String,
         _body: Option<Value>,
         _reader: &mut R,
+        _writer: &mut W,
     ) -> Result<(StatusCode, Option<Value>), Error> {
         Err(Error::NotImplemented)
     }
@@ -531,6 +542,7 @@ impl<R: Reader> Firmware<R> for OneRomFirmware {
         _path: String,
         _body: Option<String>,
         _reader: &mut R,
+        _writer: &mut W,
     ) -> Result<(StatusCode, Option<String>), Error> {
         Err(Error::NotImplemented)
     }
