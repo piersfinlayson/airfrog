@@ -43,7 +43,9 @@ cargo publish -p airfrog-core
 
 ### airfrog-swd
 
-Change the paths used in [`airfrog-swd`](airfrog-swd/Cargo.toml) to point to the new version of `airfrog-core` and `airfrog-bin`.
+Change the paths used in [`airfrog-swd`](airfrog-swd/Cargo.toml) and [`airfrog-ws`](Cargo/toml) to point to the new version of `airfrog-core`, `airfrog-bin` and `airfrog-util`.
+
+You also need to temporarily point [`airfrog-ws`](Cargo.toml) to the local path version of `airfrog-swd`.
 
 Check in changes.
 

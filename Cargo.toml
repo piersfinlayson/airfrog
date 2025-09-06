@@ -23,10 +23,10 @@ edition = "2024"
 [dependencies]
 
 [dev-dependencies]
-airfrog-core = "0.1.1"
-airfrog-swd = { version = "0.1.1" }
-airfrog-bin = "0.1.1"
-airfrog-util = "0.1.1"
+airfrog-core = "0.1.2"
+airfrog-swd = { path = "airfrog-swd", version = "0.1.2" }
+airfrog-bin = "0.1.2"
+airfrog-util = "0.1.2"
 
 esp-bootloader-esp-idf = "0.1"
 esp-hal = { version = "=1.0.0-rc.0", features = [

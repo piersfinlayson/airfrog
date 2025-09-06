@@ -20,8 +20,8 @@ name = "airfrog_swd"
 path = "./src/lib.rs"
 
 [dependencies]
-airfrog-core = { path = "../airfrog-core", version = "0.1.2" }
-airfrog-bin = { path = "../airfrog-bin", version = "0.1.2" }
+airfrog-core = { version = "0.1.2" }
+airfrog-bin = { version = "0.1.2" }
 
 esp-alloc = "0.8.0"
 esp-hal = { version = "=1.0.0-rc.0", features = [
