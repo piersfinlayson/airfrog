@@ -7,18 +7,11 @@
 //! Large static content is stored in `../../assets` and minified by `build.rs`
 //! for inclusion in the binary.
 
-use crate::{static_file, static_file_css_js_html_minified as static_minified};
 use crate::http::{ContentType, Header, StaticFile};
+use crate::{static_file, static_file_css_js_html_minified as static_minified};
 
 // Images
-static_file!(
-    FAVICON,
-    ContentType::Png,
-    "",
-    "favicon-32x32",
-    "png",
-    "a"
-);
+static_file!(FAVICON, ContentType::Png, "", "favicon-32x32", "png", "a");
 static_file!(
     LOGO,
     ContentType::Png,
@@ -31,22 +24,8 @@ static_file!(
 // Minified CSS and JS files follow.  While they live in `assets/`, they are
 // minified by `build.rs` and output to `OUT_DIR`, then included from there
 // below.
-static_minified!(
-    CSS,
-    ContentType::Css,
-    "",
-    "style",
-    "css", 
-    "af"
-);
-static_minified!(
-    BROWSER_HTML,
-    ContentType::Html,
-    "",
-    "browser",
-    "html",
-    "t"
-);
+static_minified!(CSS, ContentType::Css, "", "style", "css", "af");
+static_minified!(BROWSER_HTML, ContentType::Html, "", "browser", "html", "t");
 static_minified!(
     CONFIG_UPDATE_JS,
     ContentType::JavaScript,
@@ -55,46 +34,11 @@ static_minified!(
     "js",
     "i"
 );
-static_minified!(
-    MEMORY_JS,
-    ContentType::JavaScript,
-    "",
-    "memory",
-    "js",
-    "u"
-);
-static_minified!(
-    MEMORY_CSS,
-    ContentType::Css,
-    "",
-    "memory",
-    "css",
-    "v"
-);
-static_minified!(
-    FOOTER_HTML,
-    ContentType::Html,
-    "",
-    "footer",
-    "html",
-    "c"
-);
-static_minified!(
-    RTT_HTML,
-    ContentType::Html,
-    "",
-    "rtt",
-    "html",
-    "h"
-);
-static_minified!(
-    RTT_JS,
-    ContentType::JavaScript,
-    "",
-    "rtt",
-    "js",
-    "i"
-);
+static_minified!(MEMORY_JS, ContentType::JavaScript, "", "memory", "js", "u");
+static_minified!(MEMORY_CSS, ContentType::Css, "", "memory", "css", "v");
+static_minified!(FOOTER_HTML, ContentType::Html, "", "footer", "html", "c");
+static_minified!(RTT_HTML, ContentType::Html, "", "rtt", "html", "h");
+static_minified!(RTT_JS, ContentType::JavaScript, "", "rtt", "js", "i");
 
 /// All of the static files used by airfrog
 pub(crate) const STATIC_FILES: &[StaticFile] = &[
@@ -120,7 +64,7 @@ pub const CACHE_YEAR: Header = Header {
 ///
 /// Creates three constants:
 /// - `{NAME}_CONTENT`: `&[u8]` containing the file bytes via `include_bytes!`
-/// - `{NAME}_PATH`: `&str` containing the versioned URL path 
+/// - `{NAME}_PATH`: `&str` containing the versioned URL path
 /// - `{NAME}`: `StaticFile` struct combining path, content, and headers
 ///
 /// # Arguments
@@ -142,7 +86,7 @@ pub const CACHE_YEAR: Header = Header {
 ///     "d"
 /// );
 /// ```
-/// 
+///
 /// Generates URL: `/static/logo.{VERSION}-d.png`
 #[macro_export]
 macro_rules! static_file {
@@ -150,11 +94,11 @@ macro_rules! static_file {
         paste::paste! {
             pub(crate) const [<$name _CONTENT>]: &[u8] = include_bytes!(concat!("../../assets/", $file_folder, $file_name, ".", $content_suffix));
             pub(crate) const [<$name _PATH>]: &str = concat!(
-                "/static/", 
-                $file_name, 
+                "/static/",
+                $file_name,
                 ".",
                 env!("CARGO_PKG_VERSION"),
-                "-", 
+                "-",
                 $cache_suffix,
                 ".",
                 $content_suffix
@@ -163,7 +107,7 @@ macro_rules! static_file {
                 path: [<$name _PATH>],
                 content_type: $content_type,
                 content: [<$name _CONTENT>],
-                headers: &[crate::http::assets::CACHE_YEAR],
+                headers: &[$crate::http::assets::CACHE_YEAR],
             };
         }
     };
@@ -174,7 +118,7 @@ macro_rules! static_file {
 ///
 /// Creates three constants:
 /// - `{NAME}_CONTENT`: `&[u8]` containing the file bytes via `include_bytes!`
-/// - `{NAME}_PATH`: `&str` containing the versioned URL path 
+/// - `{NAME}_PATH`: `&str` containing the versioned URL path
 /// - `{NAME}`: `StaticFile` struct combining path, content, and headers
 ///
 /// # Arguments
@@ -196,7 +140,7 @@ macro_rules! static_file {
 ///     "a"
 /// );
 /// ```
-/// 
+///
 /// Generates URL: `/static/oneromlab_readrom.{VERSION}-a.js`
 #[macro_export]
 macro_rules! static_file_css_js_html_minified {
@@ -204,11 +148,11 @@ macro_rules! static_file_css_js_html_minified {
         paste::paste! {
             pub(crate) const [<$name _CONTENT>]: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/", $file_folder, "/", $file_name, ".", $content_suffix));
             pub(crate) const [<$name _PATH>]: &str = concat!(
-                "/static/", 
-                $file_name, 
+                "/static/",
+                $file_name,
                 ".",
                 env!("CARGO_PKG_VERSION"),
-                "-", 
+                "-",
                 $cache_suffix,
                 ".",
                 $content_suffix
@@ -217,7 +161,7 @@ macro_rules! static_file_css_js_html_minified {
                 path: [<$name _PATH>],
                 content_type: $content_type,
                 content: [<$name _CONTENT>],
-                headers: &[crate::http::assets::CACHE_YEAR],
+                headers: &[$crate::http::assets::CACHE_YEAR],
             };
         }
     };

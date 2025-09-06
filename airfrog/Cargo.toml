@@ -34,9 +34,9 @@ airfrog-core = { path = "../airfrog-core", version = "0.1.2" }
 airfrog-swd = { path = "../airfrog-swd", version = "0.1.2" }
 airfrog-bin = { path = "../airfrog-bin", version = "0.1.2" }
 airfrog-util = { path = "../airfrog-util", version = "0.1.2" }
-airfrog-rpc = { path = "../../airfrog-rpc", version = "0.1.0" }
+airfrog-rpc = { version = "0.1.0" }
 
-onerom-protocol = { path = "../../software-defined-retro-rom/rust/protocol", version = "0.4.2" }
+onerom-protocol = { version = "0.1.0" }
 
 esp-bootloader-esp-idf = "0.1"
 esp-hal = { version = "=1.0.0-rc.0", features = [

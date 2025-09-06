@@ -356,18 +356,43 @@ fn html_system_info(flash_size_bytes: usize) -> String {
     let flash_size_kb = flash_size_bytes / 1024;
 
     HtmlBuilder::new()
-        .div().class("card").child(|card| {
-            card.h2("System")
-                .with_table(Some("device-info"), |table| {
-                    table
-                        .row(|row| row.with_width("300px").label_cell("MCU:").cell(&mcu))
-                        .row(|row| row.with_width("300px").label_cell("Flash size:").cell(&format!("{} KB", flash_size_kb)))
-                        .row(|row| row.with_width("300px").label_cell("Clock Speed:").cell(&format!("{} MHz", clock_speed)))
-                        .row(|row| row.with_width("300px").label_cell("MAC Address:").cell(&mac_address))
-                        .row(|row| row.with_width("300px").label_cell("Last Reset Reason:").cell(&rr_str))
-                        .row(|row| row.with_width("300px").label_cell("Uptime:").cell(&format!("{}d {}h {}m {}s", ut_days, ut_hours, ut_minutes, ut_seconds)))
-                        .row(|row| row.with_width("300px").label_cell("Heap:").cell(&format!("{}/{} bytes ({:.1}% used)", heap_used, heap_size, heap_pct)))
-                })
+        .div()
+        .class("card")
+        .child(|card| {
+            card.h2("System").with_table(Some("device-info"), |table| {
+                table
+                    .row(|row| row.with_width("300px").label_cell("MCU:").cell(&mcu))
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Flash size:")
+                            .cell(&format!("{flash_size_kb} KB"))
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Clock Speed:")
+                            .cell(&format!("{clock_speed} MHz"))
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("MAC Address:")
+                            .cell(&mac_address)
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Last Reset Reason:")
+                            .cell(&rr_str)
+                    })
+                    .row(|row| {
+                        row.with_width("300px").label_cell("Uptime:").cell(&format!(
+                            "<{ut_days}d {ut_hours}h {ut_minutes}m {ut_seconds}s>"
+                        ))
+                    })
+                    .row(|row| {
+                        row.with_width("300px").label_cell("Heap:").cell(&format!(
+                            "<{heap_used}/>{heap_size} bytes ({heap_pct:.1}% used)"
+                        ))
+                    })
+            })
         })
         .build()
 }
@@ -380,16 +405,37 @@ fn html_build_info() -> String {
         .unwrap_or(RUSTC_VERSION);
 
     HtmlBuilder::new()
-        .div().class("card").child(|card| {
-            card.h2("Build")
-                .with_table(Some("device-info"), |table| {
-                    table
-                        .row(|row| row.with_width("300px").label_cell("Airfrog Version:").cell(&format!("v{}", PKG_VERSION)))
-                        .row(|row| row.with_width("300px").label_cell("Build Time and Date:").cell(&format!("{} {}", AIRFROG_BUILD_TIME, AIRFROG_BUILD_DATE)))
-                        .row(|row| row.with_width("300px").label_cell("Build Features:").cell(FEATURES_LOWERCASE_STR))
-                        .row(|row| row.with_width("300px").label_cell("Build Profile:").cell(PROFILE))
-                        .row(|row| row.with_width("300px").label_cell("Rust Version:").cell(rust))
-                })
+        .div()
+        .class("card")
+        .child(|card| {
+            card.h2("Build").with_table(Some("device-info"), |table| {
+                table
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Airfrog Version:")
+                            .cell(&format!("v{PKG_VERSION}"))
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Build Time and Date:")
+                            .cell(&format!("{AIRFROG_BUILD_TIME} {AIRFROG_BUILD_DATE}"))
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Build Features:")
+                            .cell(FEATURES_LOWERCASE_STR)
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Build Profile:")
+                            .cell(PROFILE)
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Rust Version:")
+                            .cell(rust)
+                    })
+            })
         })
         .build()
 }
@@ -397,14 +443,27 @@ fn html_build_info() -> String {
 // Airfrog project level information
 fn html_project_info() -> String {
     HtmlBuilder::new()
-        .div().class("card").child(|card| {
-            card.h2("Project")
-                .with_table(Some("device-info"), |table| {
-                    table
-                        .row(|row| row.with_width("300px").label_cell("Homepage:").link_cell(&format!("https://{}", AIRFROG_HOME_PAGE), AIRFROG_HOME_PAGE))
-                        .row(|row| row.with_width("300px").label_cell("Author:").link_cell(&format!("mailto:{}?subject=Airfrog", AUTHOR_EMAIL), AUTHOR))
-                        .row(|row| row.with_width("300px").label_cell("Licence:").cell(PKG_LICENSE))
-                })
+        .div()
+        .class("card")
+        .child(|card| {
+            card.h2("Project").with_table(Some("device-info"), |table| {
+                table
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Homepage:")
+                            .link_cell(&format!("https://{AIRFROG_HOME_PAGE}"), AIRFROG_HOME_PAGE)
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Author:")
+                            .link_cell(&format!("mailto:{AUTHOR_EMAIL}?subject=Airfrog"), AUTHOR)
+                    })
+                    .row(|row| {
+                        row.with_width("300px")
+                            .label_cell("Licence:")
+                            .cell(PKG_LICENSE)
+                    })
+            })
         })
         .build()
 }

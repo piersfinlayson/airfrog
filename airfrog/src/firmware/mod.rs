@@ -26,7 +26,7 @@ use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::signal::Signal;
-use embassy_time::{with_timeout, Duration, TimeoutError};
+use embassy_time::{Duration, TimeoutError, with_timeout};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
@@ -158,7 +158,7 @@ pub enum Error {
     /// Attempt to use a method which requires aligned access, with unaligned
     /// address or data.
     NotAligned,
-    
+
     /// Custom firmware implementation error
     Custom(String),
 
@@ -221,15 +221,20 @@ pub async fn task(
         match select(FW_CTRL_SIGNAL.wait(), FW_CMD_CHANNEL.receive()).await {
             Either::First(control) => fw.handle_control(control).await,
             Either::Second((command, response_sender)) => {
-                    match with_timeout(FIRMWARE_HANDLER_TIMEOUT, fw.handle_command(command.clone(), response_sender)).await {
-                        Ok(()) => (),
-                        Err(TimeoutError) => {
-                            warn!("Firmware command {command:?} timed out");
-                            if let Some(sender) = response_sender {
-                                sender.signal(Response::Error(Error::Timeout));
-                            }
+                match with_timeout(
+                    FIRMWARE_HANDLER_TIMEOUT,
+                    fw.handle_command(command.clone(), response_sender),
+                )
+                .await
+                {
+                    Ok(()) => (),
+                    Err(TimeoutError) => {
+                        warn!("Firmware command {command:?} timed out");
+                        if let Some(sender) = response_sender {
+                            sender.signal(Response::Error(Error::Timeout));
                         }
                     }
+                }
             }
         }
     }
@@ -471,7 +476,11 @@ impl Reader for FirmwareReader {
     type Error = Error;
 
     async fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        trace!("Info:  FirmwareReader reading {:#010X} length {}", addr, buf.len());
+        trace!(
+            "Info:  FirmwareReader reading {:#010X} length {}",
+            addr,
+            buf.len()
+        );
 
         let start_aligned = addr & !3;
         let end_aligned = (addr + buf.len() as u32 + 3) & !3;
@@ -479,7 +488,10 @@ impl Reader for FirmwareReader {
 
         // Build a Target request
         let addr_str = format!("{start_aligned:#010X}");
-        let command = TargetCommand::ReadMemBulk { addr: addr_str, count };
+        let command = TargetCommand::ReadMemBulk {
+            addr: addr_str,
+            count,
+        };
         let request = TargetRequest {
             command,
             response_signal: self.target_response_signal,
@@ -514,13 +526,12 @@ impl Reader for FirmwareReader {
 
         let byte_offset = (addr - start_aligned) as usize;
         for (i, hex_str) in hex_strings.iter().enumerate() {
-            let value = u32::from_str_radix(hex_str.trim_start_matches("0x"), 16)
-                .map_err(|e| {
-                    warn!("Failed to parse hex string '{}': {e}", hex_str);
-                    Error::Target
-                })?;
+            let value = u32::from_str_radix(hex_str.trim_start_matches("0x"), 16).map_err(|e| {
+                warn!("Failed to parse hex string '{hex_str}': {e}");
+                Error::Target
+            })?;
             let word_bytes = value.to_le_bytes();
-            
+
             for (j, &byte) in word_bytes.iter().enumerate() {
                 let global_idx = i * 4 + j;
                 if global_idx >= byte_offset && global_idx - byte_offset < buf.len() {
@@ -539,7 +550,7 @@ impl Reader for FirmwareReader {
 
 /// Writer instance used by custom Firmware implementations to write data to
 /// the Target.
-/// 
+///
 /// Unlike the Reader implementation, the writer MUST be used with 4-byte
 /// aligned writes only.
 pub struct FirmwareWriter {
@@ -568,15 +579,22 @@ impl Writer for FirmwareWriter {
     type Error = Error;
 
     async fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
-        trace!("Info:  FirmwareWriter writing {:#010X} length {}", addr, data.len());
+        trace!(
+            "Info:  FirmwareWriter writing {:#010X} length {}",
+            addr,
+            data.len()
+        );
 
         // Verify 4-byte alignment as required
         if addr & 3 != 0 {
-            warn!("Write address {:#010X} is not 4-byte aligned", addr);
+            warn!("Write address {addr:#010X} is not 4-byte aligned");
             return Err(Error::NotAligned);
         }
         if data.len() & 3 != 0 {
-            warn!("Write data length {} is not a multiple of 4 bytes", data.len());
+            warn!(
+                "Write data length {} is not a multiple of 4 bytes",
+                data.len()
+            );
             return Err(Error::NotAligned);
         }
 
@@ -585,16 +603,16 @@ impl Writer for FirmwareWriter {
             .chunks_exact(4)
             .map(|chunk| {
                 let word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                format!("{:#010X}", word)
+                format!("{word:#010X}")
             })
             .collect();
 
         // Build a Target request
         let addr_str = format!("{addr:#010X}");
-        
-        let command = TargetCommand::WriteMemBulk { 
-            addr: addr_str, 
-            data: hex_strings 
+
+        let command = TargetCommand::WriteMemBulk {
+            addr: addr_str,
+            data: hex_strings,
         };
         let request = TargetRequest {
             command,
@@ -623,4 +641,3 @@ impl Writer for FirmwareWriter {
         // No-op as we does not have a concept of "base address"
     }
 }
-

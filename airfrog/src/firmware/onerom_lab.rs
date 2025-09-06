@@ -6,8 +6,8 @@
 
 use airfrog_core::Mcu;
 use airfrog_rpc::Error as RpcError;
-use airfrog_rpc::io::{Reader, Writer};
 use airfrog_rpc::client::{AsyncDelay, AsyncRpcClient, RpcClientConfig};
+use airfrog_rpc::io::{Reader, Writer};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -19,15 +19,15 @@ use embassy_time::{Duration, Timer};
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 
-use sdrr_fw_parser::{LabParser, OneRomLab};
 use onerom_protocol::Error as OneRomError;
-use onerom_protocol::lab::{Command as RpcCommand, RomMetadata};
+use onerom_protocol::lab::{Command as RpcCommand, LabRomEntry};
+use sdrr_fw_parser::{LabParser, OneRomLab};
 
 use crate::firmware::Error;
 use crate::firmware::assets::ONEROM_LAB_READROM_JS_PATH;
 use crate::firmware::types::{Decoder, Firmware, FirmwareType, WwwButton};
-use crate::http::{Method, StatusCode};
 use crate::http::html::build::HtmlBuilder;
+use crate::http::{Method, StatusCode};
 
 const FIRMWARE_TYPE: FirmwareType = FirmwareType::OneRomLab;
 
@@ -103,16 +103,13 @@ impl<R: Reader + 'static, W: Writer + 'static> Firmware<R, W> for OneRomLabFirmw
 
     fn rtt_cb_address(&self) -> Option<u32> {
         #[allow(clippy::bind_instead_of_map)]
-        self.info
-            .flash
-            .as_ref()
-            .and_then(|flash| {
-                if flash.rtt_ptr != 0 {
-                    Some(flash.rtt_ptr)
-                } else {
-                    None
-                }
-            })
+        self.info.flash.as_ref().and_then(|flash| {
+            if flash.rtt_ptr != 0 {
+                Some(flash.rtt_ptr)
+            } else {
+                None
+            }
+        })
     }
 
     fn get_summary_kvp(&self) -> Result<Vec<(String, String)>, Error> {
@@ -165,20 +162,44 @@ impl<R: Reader + 'static, W: Writer + 'static> Firmware<R, W> for OneRomLabFirmw
         let rpc_rsp_channel_size = ram.map_or(0, |r| r.rpc_rsp_channel_size);
 
         let html = HtmlBuilder::new()
-            .div().class("card").child(|card| {
+            .div()
+            .class("card")
+            .child(|card| {
                 card.h2("One ROM Lab")
                     .with_table(Some("device-info"), |table| {
                         table
                             .row(|row| row.label_cell("Firmware:").cell("One ROM Lab"))
-                            .row(|row| row.label_cell("Version:").cell(&format!("V{}.{}.{}", major_version, minor_version, patch_version)))
+                            .row(|row| {
+                                row.label_cell("Version:").cell(&format!(
+                                    "V{major_version}.{minor_version}.{patch_version}",
+                                ))
+                            })
                             .row(|row| row.label_cell("Hardware:").cell(hardware))
                             .row(|row| row.label_cell("Features:").cell(features))
-                            .row(|row| row.label_cell("ROM data:").cell(&format!("{:#010X}", rom_data_ptr)))
-                            .row(|row| row.label_cell("RTT data:").cell(&format!("{:#010X}", rtt_ptr)))
-                            .row(|row| row.label_cell("RPC Command Channel:").cell(&format!("{:#010X}", rpc_cmd_channel_ptr)))
-                            .row(|row| row.label_cell("Channel Size:").cell(&rpc_cmd_channel_size.to_string()))
-                            .row(|row| row.label_cell("RPC Response Channel:").cell(&format!("{:#010X}", rpc_rsp_channel_ptr)))
-                            .row(|row| row.label_cell("Channel Size:").cell(&rpc_rsp_channel_size.to_string()))
+                            .row(|row| {
+                                row.label_cell("ROM data:")
+                                    .cell(&format!("{rom_data_ptr:#010X}"))
+                            })
+                            .row(|row| {
+                                row.label_cell("RTT data:")
+                                    .cell(&format!("{rtt_ptr:#010X}"))
+                            })
+                            .row(|row| {
+                                row.label_cell("RPC Command Channel:")
+                                    .cell(&format!("{rpc_cmd_channel_ptr:#010X}"))
+                            })
+                            .row(|row| {
+                                row.label_cell("Channel Size:")
+                                    .cell(&rpc_cmd_channel_size.to_string())
+                            })
+                            .row(|row| {
+                                row.label_cell("RPC Response Channel:")
+                                    .cell(&format!("{rpc_rsp_channel_ptr:#010X}"))
+                            })
+                            .row(|row| {
+                                row.label_cell("Channel Size:")
+                                    .cell(&rpc_rsp_channel_size.to_string())
+                            })
                     })
             })
             .build();
@@ -202,7 +223,9 @@ impl<R: Reader + 'static, W: Writer + 'static> Firmware<R, W> for OneRomLabFirmw
         writer: &mut W,
     ) -> Result<(StatusCode, Option<Value>), Error> {
         match path.as_str() {
-            "read_rom" => Ok(self.handle_rest_read_rom(method, body, reader, writer).await?),
+            "read_rom" => Ok(self
+                .handle_rest_read_rom(method, body, reader, writer)
+                .await?),
             _ => Err(Error::NotImplemented),
         }
     }
@@ -216,7 +239,9 @@ impl<R: Reader + 'static, W: Writer + 'static> Firmware<R, W> for OneRomLabFirmw
         writer: &mut W,
     ) -> Result<(StatusCode, Option<String>), Error> {
         match path.as_str() {
-            "read_rom" => Ok(self.handle_www_read_rom(method, body, reader, writer).await?),
+            "read_rom" => Ok(self
+                .handle_www_read_rom(method, body, reader, writer)
+                .await?),
             _ => Err(Error::NotImplemented),
         }
     }
@@ -234,12 +259,19 @@ impl<R: Reader + 'static, W: Writer + 'static> OneRomLabFirmware<R, W> {
 
     // Used to retrieve configuration for the RPC client
     fn rpc_config(&self) -> Result<RpcClientConfig, CustomError> {
-        let ram_info = self.info.ram.as_ref().ok_or_else(|| CustomError::Custom("No RAM info available".to_string()))?;
+        let ram_info = self
+            .info
+            .ram
+            .as_ref()
+            .ok_or_else(|| CustomError::Custom("No RAM info available".to_string()))?;
 
         let cmd_ch_ptr = ram_info.rpc_cmd_channel_ptr;
         let rsp_ch_ptr = ram_info.rpc_rsp_channel_ptr;
 
-        Ok(RpcClientConfig::FromTarget { cmd_ch_ptr, rsp_ch_ptr })
+        Ok(RpcClientConfig::FromTarget {
+            cmd_ch_ptr,
+            rsp_ch_ptr,
+        })
     }
 }
 
@@ -275,18 +307,23 @@ impl<R: Reader + 'static, W: Writer + 'static> OneRomLabFirmware<R, W> {
         // Create the HTML using builder
         let html = HtmlBuilder::new()
             .h1("Read ROM")
-            .div().class("card").child(|card| {
-                card.div().child(|inner_div| {
-                    inner_div.button("Read ROM", "readRom()")
-                })
-                .br()
-                .div().id("rom-result").child(|result_div| {
-                    result_div.with_table(Some("device-info"), |table| {
-                        table.row(|row| {
-                            row.with_width("200px").label_cell("ROM").cell("Not yet read")
+            .div()
+            .class("card")
+            .child(|card| {
+                card.div()
+                    .child(|inner_div| inner_div.button("Read ROM", "readRom()"))
+                    .br()
+                    .div()
+                    .id("rom-result")
+                    .child(|result_div| {
+                        result_div.with_table(Some("device-info"), |table| {
+                            table.row(|row| {
+                                row.with_width("200px")
+                                    .label_cell("ROM")
+                                    .cell("Not yet read")
+                            })
                         })
                     })
-                })
             })
             .script_src(ONEROM_LAB_READROM_JS_PATH)
             .build();
@@ -313,26 +350,62 @@ impl<R: Reader + 'static, W: Writer + 'static> OneRomLabFirmware<R, W> {
         }
 
         // Send the ReadRom request via RPC to the target
-        let rsp = RpcClient::new(
-            reader,
-            writer,
-            self.rpc_config()?,
-        ).request(&RpcCommand::ReadRom.as_bytes()).await?;
+        let mut rpc = RpcClient::new(reader, writer, self.rpc_config()?);
+        let rsp = rpc.request(&RpcCommand::ReadRom.as_bytes()).await?;
 
         // Parse the response
-        let rom_data = RomMetadata::from_buffer(&rsp)?;
-
-        // Turn the ROM data into JSON
-        let json = match rom_data.as_ref() {
-            Some(data) => {
-                serde_json::to_value(data)
-                    .map_err(|e| CustomError::Custom(format!("ROM Data JSON serialization error: {e}")))?
+        match LabRomEntry::from_buffer(&rsp) {
+            Ok(rom_data) => {
+                // Turn the ROM data into JSON
+                let json = serde_json::to_value(rom_data).map_err(|e| {
+                    CustomError::Custom(format!("ROM Data JSON serialization error: {e}"))
+                })?;
+                Ok((StatusCode::Ok, Some(json)))
             }
-            None => serde_json::json!({"ROM": "Unknown or no ROM detected"}),
-        };
-
-        Ok((StatusCode::Ok, Some(json)))
+            Err(OneRomError::NoRom) => {
+                // No ROM data present
+                let json = serde_json::json!({"ROM": "Unknown or no ROM detected"});
+                Ok((StatusCode::Ok, Some(json)))
+            }
+            Err(OneRomError::RomNotRecognised) => {
+                // No ROM data present
+                let json = serde_json::json!({"ROM": "Unrecognised"});
+                Ok((StatusCode::Ok, Some(json)))
+            }
+            Err(e) => {
+                // Some other error occurred
+                error!("warn:  Error reading ROM data from target: {e:?}");
+                let json = serde_json::json!({"Error": format!("{e:?}")});
+                Ok((StatusCode::Ok, Some(json)))
+            }
+        }
     }
+
+    /*
+    async fn get_unrecognised_rom_data(&self, rpc: &mut RpcClient<'_, R, W>) -> Result<Vec<u8>, CustomError> {
+        let mut rom_data = Vec::new();
+        let mut offset = 0;
+
+        loop {
+            // Send the ReadRomData request via RPC to the target
+            let cmd = RpcCommand::GetRawData { offset, length: 256 };
+            let rsp = rpc.request(&cmd.as_bytes()).await?;
+
+            if rsp.is_empty() {
+                break; // No more data
+            }
+
+            rom_data.extend_from_slice(&rsp);
+            offset += rsp.len() as u32;
+
+            if rsp.len() < 256 {
+                break; // Last chunk received
+            }
+        }
+
+        Ok(rom_data)
+    }
+    */
 }
 
 // Need a custom error type so we can map between RpcError and (Firmware)Error
@@ -362,7 +435,7 @@ impl From<Error> for CustomError {
 impl From<CustomError> for Error {
     fn from(err: CustomError) -> Self {
         match err {
-            CustomError::FwError(fw_err) => return fw_err,
+            CustomError::FwError(fw_err) => fw_err,
             CustomError::Custom(details) => Error::Custom(details),
         }
     }

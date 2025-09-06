@@ -138,7 +138,9 @@ dependencies = [
 
 [[package]]
 name = "airfrog-rpc"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb64ace2b3a1dc0e61537001b8e3b39252df166a2ec7744f4c83566c48d52a05"
 dependencies = [
  "async-trait",
  "log",
@@ -2262,7 +2264,9 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "onerom-database"
-version = "0.4.2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac27606ebf8bf3b000ea1f77ec6b008c54c0a17775574c403944cb50a73f7bb7"
 dependencies = [
  "csv",
  "hex-literal",
@@ -2273,7 +2277,9 @@ dependencies = [
 
 [[package]]
 name = "onerom-protocol"
-version = "0.4.2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9df4843ba1398ca425d37f47fecf8339d4f93725bdefbb2ba8010903b9174de3"
 dependencies = [
  "log",
  "onerom-database",

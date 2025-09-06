@@ -94,11 +94,12 @@ pub(crate) async fn task(
         // Figure out how long select should wait for - use the keepalive/refresh
         let now = Instant::now();
         if refresh_keepalive_time < now {
-            refresh_keepalive_time = now + if !target.is_connected().await {
-                TARGET_RECONNECT_DURATION
-            } else {
-                TARGET_KEEPALIVE_DURATION
-            };
+            refresh_keepalive_time = now
+                + if !target.is_connected().await {
+                    TARGET_RECONNECT_DURATION
+                } else {
+                    TARGET_KEEPALIVE_DURATION
+                };
         }
 
         // Set up the future based on whether we want a binary API or not
@@ -474,7 +475,7 @@ impl<'a> Target<'a> {
             }
         }
         .unwrap_or_else(|e| e.into());
-        trace!("Response: {:?}", response);
+        trace!("Response: {response:?}");
         request.response_signal.signal(response);
     }
 

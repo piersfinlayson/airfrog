@@ -97,7 +97,10 @@ impl FirmwareRegistry {
                     }
                 }
                 Ok(None) => {
-                    trace!("Info:  Decoder {} did not detect firmware", decoder.fw_type());
+                    trace!(
+                        "Info:  Decoder {} did not detect firmware",
+                        decoder.fw_type()
+                    );
                     continue;
                 }
             }
@@ -112,8 +115,8 @@ impl FirmwareRegistry {
 /// Use #[async_trait(?Send)] in front of the trait implementation or the
 /// compiler will return cryptic errors.
 ///
-/// Async methods taking longer than [`FIRMWARE_TIMEOUT`] to run will be
-/// cancelled.
+/// Async methods taking longer than [`crate::firmware::FIRMWARE_HANDLER_TIMEOUT`]
+/// to run will be cancelled.
 #[async_trait(?Send)]
 pub trait Decoder<R: Reader, W: Writer> {
     /// Returns the factory's supported firmware type.  A single factory can
@@ -147,8 +150,8 @@ pub trait Decoder<R: Reader, W: Writer> {
 /// Use #[async_trait(?Send)] in front of the trait implementation or the
 /// compiler will return cryptic errors.
 ///
-/// Async methods taking longer than [`FIRMWARE_TIMEOUT`] to run will be
-/// cancelled.
+/// Async methods taking longer than [`crate::firmware::FIRMWARE_HANDLER_TIMEOUT`]
+/// to run will be cancelled.
 #[async_trait(?Send)]
 pub trait Firmware<R: Reader, W: Writer> {
     /// Returns this firmware type.

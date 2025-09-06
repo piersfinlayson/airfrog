@@ -22,11 +22,11 @@ use static_cell::make_static;
 
 use crate::config::{CONFIG, Net};
 use crate::device::DEVICE;
+use crate::firmware::assets::STATIC_FILES as FIRMWARE_STATIC_FILES;
 use crate::firmware::rtt::{
     Command as RttCommand, Error as RttError, Response as RttResponse, rtt_command,
 };
 use crate::firmware::{Command as FirmwareCommand, Response as FirmwareResponse, fw_command_wait};
-use crate::firmware::assets::STATIC_FILES as FIRMWARE_STATIC_FILES;
 use crate::http::assets::{FAVICON, STATIC_FILES};
 use crate::http::html::{
     html_summary, page_dashboard, page_firmware_custom, page_info, page_settings,
@@ -559,9 +559,10 @@ impl Server {
             match with_timeout(FIRMWARE_TIMEOUT, self.handle_firmware_command(command)).await {
                 Err(TimeoutError) => (StatusCode::Timeout, None),
                 Ok(FirmwareResponse::Json { status, body }) => (status, body),
-                Ok(FirmwareResponse::Error(error)) => {
-                    (StatusCode::InternalServerError, Some(serde_json::json!({"error": error.to_string()})))
-                }
+                Ok(FirmwareResponse::Error(error)) => (
+                    StatusCode::InternalServerError,
+                    Some(serde_json::json!({"error": error.to_string()})),
+                ),
                 Ok(_) => (StatusCode::InternalServerError, None),
             };
 
