@@ -24,7 +24,7 @@ edition = "2024"
 
 [dev-dependencies]
 airfrog-core = "0.1.2"
-airfrog-swd = { path = "airfrog-swd", version = "0.1.2" }
+airfrog-swd = { version = "0.1.2" }
 airfrog-bin = "0.1.2"
 airfrog-util = "0.1.2"
 

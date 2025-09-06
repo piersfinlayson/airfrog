@@ -48,11 +48,11 @@ dependencies = [
 name = "airfrog"
 version = "0.1.2"
 dependencies = [
- "airfrog-bin 0.1.2",
- "airfrog-core 0.1.2",
+ "airfrog-bin 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-core 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "airfrog-rpc",
- "airfrog-swd",
- "airfrog-util 0.1.2",
+ "airfrog-swd 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-util 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-trait",
  "built",
  "crc",
@@ -163,6 +163,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "airfrog-swd"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b6d2e84d50bf6d84b329973e67977af3f19ea390073477de935faeb3b794694"
+dependencies = [
+ "airfrog-bin 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "airfrog-core 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "embassy-net",
+ "embassy-time 0.5.0",
+ "embedded-io",
+ "embedded-io-async",
+ "esp-alloc",
+ "esp-hal",
+ "log",
+ "riscv 0.14.0",
+ "serde",
+]
+
+[[package]]
 name = "airfrog-util"
 version = "0.1.2"
 dependencies = [
@@ -204,7 +223,7 @@ version = "0.1.1"
 dependencies = [
  "airfrog-bin 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "airfrog-core 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "airfrog-swd",
+ "airfrog-swd 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "airfrog-util 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "critical-section",
  "embassy-executor",
@@ -2840,6 +2859,8 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sdrr-fw-parser"
 version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0ee96438813c80a7cb079081baf7be33c010c45190c93dd8027c7e6a4afac3f"
 dependencies = [
  "airfrog-rpc",
  "deku",
