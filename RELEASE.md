@@ -66,7 +66,7 @@ Re-run CI:
 ci/check.sh
 ```
 
-Check in changes.
+Check in changes and merge.
 
 ### Post Release
 

@@ -40,7 +40,7 @@ esp-backtrace = { version = "0.17.0", features = [
   "panic-handler",
   "println",
 ] }
-esp-println = { version = "0.15", features = [ "esp32c3" ] }
+esp-println = { version = "0.15", features = [ "esp32c3", "log-04" ] }
 critical-section = "1.2"
 embassy-executor = { version = "0.7", features = [ "nightly" ] }
 embassy-sync = { version = "0.7.2" }
