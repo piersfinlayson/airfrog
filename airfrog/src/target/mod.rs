@@ -17,7 +17,7 @@ use embassy_futures::select::{Either, select};
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use esp_hal::gpio::{InputPin, OutputPin};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -27,6 +27,7 @@ use static_cell::make_static;
 use airfrog_bin::MAX_WORD_COUNT;
 #[cfg(any(feature = "www", feature = "rest"))]
 use airfrog_core::Mcu;
+use airfrog_rpc::io::Reader;
 use airfrog_swd::SwdError;
 use airfrog_swd::debug::DebugInterface;
 use airfrog_swd::protocol::Speed;
@@ -37,15 +38,12 @@ use crate::AirfrogError;
 #[cfg(any(feature = "www", feature = "rest"))]
 use crate::ErrorKind;
 
+use crate::firmware::{Control as FirmwareControl, fw_control};
+
 #[cfg(feature = "bin-api")]
 use airfrog_swd::bin;
 
-use sdrr_fw_parser::Reader;
-
 use crate::config::CONFIG;
-use crate::firmware::one_rom::{SdrrHandler, SdrrHandlerInfo};
-use crate::firmware::{FwHandler, FwHandlerInfo};
-use crate::rtt::{Control as RttControl, rtt_control};
 
 pub(crate) mod request;
 pub(crate) mod response;
@@ -91,13 +89,18 @@ pub(crate) async fn task(
     info!("Exec:  Binary API started on port {BIN_API_PORT}");
 
     let mut reconnect_count: u32 = 0;
+    let mut refresh_keepalive_time: Instant = Instant::now() + TARGET_KEEPALIVE_DURATION;
     loop {
-        // Figure out how long select should wait for.
-        let dur = if !target.is_connected().await {
-            TARGET_RECONNECT_DURATION
-        } else {
-            TARGET_KEEPALIVE_DURATION
-        };
+        // Figure out how long select should wait for - use the keepalive/refresh
+        let now = Instant::now();
+        if refresh_keepalive_time < now {
+            refresh_keepalive_time = now
+                + if !target.is_connected().await {
+                    TARGET_RECONNECT_DURATION
+                } else {
+                    TARGET_KEEPALIVE_DURATION
+                };
+        }
 
         // Set up the future based on whether we want a binary API or not
         #[cfg(feature = "bin-api")]
@@ -108,7 +111,7 @@ pub(crate) async fn task(
         #[cfg(not(feature = "bin-api"))]
         let first_sel = target.request_receiver.receive();
 
-        match select(first_sel, Timer::after(dur)).await {
+        match select(first_sel, Timer::at(refresh_keepalive_time)).await {
             Either::First(req_acc) => {
                 #[cfg(feature = "bin-api")]
                 match req_acc {
@@ -193,7 +196,6 @@ pub(crate) struct Target<'a> {
     request_receiver: Receiver<'static, CriticalSectionRawMutex, Request, REQUEST_CHANNEL_SIZE>,
     request_sender: Sender<'static, CriticalSectionRawMutex, Request, REQUEST_CHANNEL_SIZE>,
     settings: Settings,
-    fw_info: Option<serde_json::Value>,
 }
 
 impl<'a> Target<'a> {
@@ -218,7 +220,6 @@ impl<'a> Target<'a> {
             request_receiver,
             request_sender,
             settings,
-            fw_info: None,
         }
     }
 
@@ -232,106 +233,45 @@ impl<'a> Target<'a> {
         let connected = self.swd.swd_if().is_connected();
 
         if !connected {
-            if self.fw_info.is_some() {
-                // Stop the RTT Task
-                rtt_control(RttControl::Stop);
-            }
-
-            self.fw_info = None;
+            // Stop the Firmware Task
+            fw_control(FirmwareControl::Stop);
         }
         connected
     }
 
     async fn connect(&mut self) -> Result<(), SwdError> {
-        self.fw_info = None;
-        let fw_info = self.connect_inner().await?;
-        self.fw_info = fw_info;
-        Ok(())
-    }
-
-    async fn retrieve_firmware_info(
-        &mut self,
-        already_have: bool,
-    ) -> Result<Option<serde_json::Value>, SwdError> {
-        let mcu = match self.swd.mcu() {
-            Some(mcu) => mcu,
-            None => {
-                info!("Error: Failed to detect MCU");
-                return Ok(None);
-            }
-        };
-
-        if SdrrHandlerInfo::supports_mcu(&mcu) {
-            let mut sdrr_handler = SdrrHandler::new(self);
-            if sdrr_handler.detect().await {
-                let name = SdrrHandlerInfo::name();
-                if !already_have {
-                    info!("OK:    Detected firmware type: {name}");
-                } else {
-                    debug!("OK:    Detected firmware type: {name}");
-                }
-                match sdrr_handler.parse_info().await {
-                    Ok(info) => {
-                        debug!("Info:  Firmware summary {}", info.summary());
-                        trace!("Info:  Firmware details {}", info.details());
-                        Ok(Some(info.details()))
-                    }
-                    Err(e) => {
-                        warn!("Error: Failed to parse firmware info: {e:?}");
-                        Ok(None)
-                    }
-                }
-            } else {
-                trace!("Note:  No SDRR firmware detected on target: {mcu:?}");
-                Ok(None)
-            }
-        } else {
-            debug!("Note:  No firmware handler for MCU: {mcu:?}");
-            Ok(None)
-        }
-    }
-
-    async fn connect_inner(&mut self) -> Result<Option<serde_json::Value>, SwdError> {
         self.swd.reset_swd_target().await?;
+        let mcu = if let Some(mcu) = self.swd.mcu() {
+            mcu
+        } else {
+            warn!("Error: Connected to target via SWD, but no MCU details");
+            return Err(SwdError::NotReady);
+        };
         info!("OK:    Target connected {self}");
-        let fw = self.retrieve_firmware_info(false).await?;
 
-        if let Some(fw) = fw.as_ref() {
-            let rtt_ptr = fw
-                .get("flash")
-                .and_then(|v| v.get("extra_info"))
-                .and_then(|v| v.get("rtt_ptr"))
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32);
-            if let Some(rtt_cb_loc) = rtt_ptr {
-                rtt_control(RttControl::Start { rtt_cb_loc });
-                debug!("Info:  RTT started at location {rtt_cb_loc:#010X}");
-            } else {
-                debug!("No RTT pointer found");
-            }
-        }
+        // Start the firmware task
+        fw_control(FirmwareControl::Start { mcu });
 
-        Ok(fw)
+        Ok(())
     }
 
     async fn do_keepalive(&mut self) -> () {
         if let Err(e) = self.swd.swd_if().keepalive().await {
             warn!("Note:  Target keepalive failed: {e}");
-            self.fw_info = None;
+
+            // Stop the Firmware Task
+            fw_control(FirmwareControl::Stop);
         }
     }
 
     async fn do_refresh(&mut self) -> () {
         debug!("Refreshing target firmware/RAM information");
-        self.fw_info = None;
         if self.swd.reset_swd_target().await.is_err() {
             warn!("Note:  Target refresh failed - unable to reset SWD target");
-            return;
+
+            // Stop the Firmware Task
+            fw_control(FirmwareControl::Stop);
         };
-        match self.retrieve_firmware_info(true).await {
-            Ok(fw_info) => self.fw_info = fw_info,
-            Err(e) => warn!("Note:  Target refresh failed: {e}"),
-        }
     }
 
     fn refresh(&self) -> bool {
@@ -459,25 +399,11 @@ impl<'a> Target<'a> {
 
     #[cfg(any(feature = "rest", feature = "www"))]
     fn get_status(&mut self) -> Status {
-        let mut firmware = None;
-        if let Some(fw) = self.fw_info.as_ref() {
-            trace!("Note:  Firmware detected: {fw}");
-            let fw_type = fw.get(crate::firmware::AF_FW_TYPE_KEY);
-            if let Some(fw_type) = fw_type
-                && fw_type == crate::firmware::one_rom::AF_FW_TYPE
-            {
-                firmware = Some(crate::firmware::one_rom::SdrrHandlerInfo::name().to_string());
-            }
-        } else {
-            debug!("Note:  No firmware detected");
-        }
-
         Status {
             connected: self.swd.swd_if().is_connected(),
             version: self.swd.swd_if().check_version().ok(),
             idcode: self.swd.idcode().map(|id| format!("{id}")),
             mcu: self.swd.mcu().map(|mcu| format!("{mcu}")),
-            firmware,
             settings: self.settings,
         }
     }
@@ -544,12 +470,12 @@ impl<'a> Target<'a> {
                 post_level,
                 count,
             } => self.rest_raw_clock(level, post_level, count),
-            Command::FirmwareInfo => self.get_fw_info(),
             Command::UpdateSettings { source, settings } => {
                 self.update_settings(source, settings).await
             }
         }
         .unwrap_or_else(|e| e.into());
+        trace!("Response: {response:?}");
         request.response_signal.signal(response);
     }
 
@@ -839,7 +765,6 @@ impl<'a> Target<'a> {
         self.set_auto_connect(false);
         self.set_keepalive(false);
         self.set_refresh(false);
-        self.fw_info = None;
 
         // Try to connect as V1.  If that fails, try V2.  Multi-drop
         // is not attempted.
@@ -1022,19 +947,6 @@ impl<'a> Target<'a> {
 // WWW commands
 #[cfg(any(feature = "www", feature = "rest"))]
 impl<'a> Target<'a> {
-    fn get_fw_info(&mut self) -> Result<Response, AirfrogError> {
-        // Also provide the status, to avoid the need for two calls
-        let mut response = Response::default().with_swd_status(self.get_status());
-        if let Some(fw_info) = &self.fw_info {
-            let fw_info = fw_info.clone();
-
-            response.data = Some(fw_info);
-            Ok(response)
-        } else {
-            Ok(response.with_error(AirfrogError::Airfrog(ErrorKind::NoFirmware)))
-        }
-    }
-
     async fn update_settings(
         &mut self,
         source: SettingsSource,
@@ -1066,9 +978,6 @@ impl<'a> fmt::Display for Target<'a> {
             if let Some(mcu) = self.swd.mcu() {
                 write!(f, ", {mcu:#}")?;
             }
-            if let Some(firmware) = &self.fw_info {
-                write!(f, ", {firmware:?}")?;
-            }
             Ok(())
         } else {
             if let Some(mcu) = self.swd.mcu() {
@@ -1087,7 +996,8 @@ impl<'a> Reader for &mut Target<'a> {
     type Error = AirfrogError;
 
     async fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        let word_count = buf.len().div_ceil(4);
+        let offset = (addr & 3) as usize;
+        let word_count = (offset + buf.len()).div_ceil(4);
         let mut words = vec![0u32; word_count];
 
         self.swd

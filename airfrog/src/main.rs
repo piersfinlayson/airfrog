@@ -56,6 +56,7 @@
 )]
 #![feature(type_alias_impl_trait)]
 #![feature(impl_trait_in_assoc_type)]
+#![feature(if_let_guard)]
 
 extern crate alloc;
 use core::net::{Ipv4Addr, SocketAddr};
@@ -82,7 +83,6 @@ mod firmware;
 mod flash;
 mod http;
 mod macros;
-mod rtt;
 mod target;
 
 use config::{CONFIG, NetMode};
@@ -268,6 +268,9 @@ async fn main(spawner: Spawner) -> ! {
     // Spawn the Target task
     spawner.must_spawn(target::task(swd, sta_stack));
 
+    // Spawn the Firmware task
+    spawner.must_spawn(firmware::task(spawner, target_request_sender));
+
     if let Some(wifi_mode) = wifi_mode {
         let wifi = wifi.expect("WiFi interface should be initialized if mode is set");
         let (start_ap, started_sta) = match wifi_mode {
@@ -356,9 +359,6 @@ async fn main(spawner: Spawner) -> ! {
             spawner.must_spawn(captive_dns_task(ap_stack));
         }
     }
-
-    // Start the RTT task
-    spawner.must_spawn(rtt::rtt_task(target_request_sender));
 
     // The main loop now turns into a flash storage task, that waits for
     // signals to store config and/or flash a new OTA image.

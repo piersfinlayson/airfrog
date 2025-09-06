@@ -13,7 +13,7 @@ use embassy_net::{Stack, tcp::TcpSocket};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_sync::signal::Signal;
-use embassy_time::with_timeout;
+use embassy_time::{TimeoutError, with_timeout};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 #[cfg(feature = "httpd")]
@@ -22,10 +22,15 @@ use static_cell::make_static;
 
 use crate::config::{CONFIG, Net};
 use crate::device::DEVICE;
+use crate::firmware::assets::STATIC_FILES as FIRMWARE_STATIC_FILES;
+use crate::firmware::rtt::{
+    Command as RttCommand, Error as RttError, Response as RttResponse, rtt_command,
+};
+use crate::firmware::{Command as FirmwareCommand, Response as FirmwareResponse, fw_command_wait};
 use crate::http::assets::{FAVICON, STATIC_FILES};
 use crate::http::html::{
-    html_summary, page_dashboard, page_info, page_settings, page_target_browser,
-    page_target_firmware, page_target_rtt, page_target_update,
+    html_summary, page_dashboard, page_firmware_custom, page_info, page_settings,
+    page_target_browser, page_target_firmware, page_target_rtt, page_target_update,
 };
 use crate::http::json::parse_json_body;
 use crate::http::{
@@ -33,16 +38,20 @@ use crate::http::{
     HTTPD_TASK_TCP_RX_BUF_SIZE, HTTPD_TASK_TCP_TX_BUF_SIZE, ROUTER_TIMEOUT, WEB_TASK_POOL_SIZE,
 };
 use crate::http::{Header, HtmlContent, Method, Response, ResponseContent, Rest, StatusCode};
-use crate::rtt::{Command as RttCommand, Error as RttError, Response as RttResponse, rtt_command};
 use crate::target::{
-    Command, REQUEST_CHANNEL_SIZE, Request as TargetRequest, Response as TargetResponse,
+    Command as TargetCommand, REQUEST_CHANNEL_SIZE, Request as TargetRequest,
+    Response as TargetResponse,
 };
 use crate::{AirfrogError, ErrorKind, REBOOT_SIGNAL};
+
+/// How long Http will wait for a response from firmware
+pub const FIRMWARE_TIMEOUT: embassy_time::Duration = embassy_time::Duration::from_millis(5000);
 
 /// Main HTTP server object that handles incoming connections and requests.
 struct Server {
     target_sender: Sender<'static, CriticalSectionRawMutex, TargetRequest, REQUEST_CHANNEL_SIZE>,
-    response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+    target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+    firmware_response_signal: &'static Signal<CriticalSectionRawMutex, FirmwareResponse>,
     rtt_rsp_ch: &'static Channel<CriticalSectionRawMutex, Result<RttResponse, RttError>, 1>,
     header_buf: &'static mut [u8; HTTPD_HEADER_BUF_SIZE],
     body_buf: &'static mut [u8; HTTPD_BODY_BUF_SIZE],
@@ -56,14 +65,16 @@ impl Server {
             TargetRequest,
             REQUEST_CHANNEL_SIZE,
         >,
-        response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+        target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
+        firmware_response_signal: &'static Signal<CriticalSectionRawMutex, FirmwareResponse>,
         rtt_rsp_ch: &'static Channel<CriticalSectionRawMutex, Result<RttResponse, RttError>, 1>,
         header_buf: &'static mut [u8; HTTPD_HEADER_BUF_SIZE],
         body_buf: &'static mut [u8; HTTPD_BODY_BUF_SIZE],
     ) -> Self {
         Self {
             target_sender,
-            response_signal,
+            target_response_signal,
+            firmware_response_signal,
             rtt_rsp_ch,
             header_buf,
             body_buf,
@@ -267,10 +278,16 @@ impl Server {
                 return Response::static_file(path, file);
             }
         }
+        for file in FIRMWARE_STATIC_FILES {
+            if path == file.path {
+                return Response::static_file(path, file);
+            }
+        }
 
         // Handle WWW routes
         if let Some(www_path) = path.strip_prefix("/www") {
             let response = match (method, www_path) {
+                // URLs handled by Http
                 (Method::Get, "/" | "") => Response::html_ok(path, self.handle_dashboard().await),
                 (Method::Get, "/browser") => Response::html_ok(path, self.handle_browser().await),
                 (Method::Get, "/firmware") => Response::html_ok(path, self.handle_firmware().await),
@@ -280,6 +297,16 @@ impl Server {
                 (Method::Get, "/rtt") => Response::html_ok(path, self.handle_www_rtt().await),
                 (Method::Get, "/info") => Response::html_ok(path, self.handle_info().await),
                 (Method::Get, "/settings") => Response::html_ok(path, self.handle_settings().await),
+                (Method::Get, "/fw-buttons") => self.handle_fw_buttons(path).await,
+
+                // Custom /www/firmware/* */ URLs, handled by firmware
+                (Method::Get, fw_path)
+                    if let Some(sub_path) = fw_path.strip_prefix("/firmware/") =>
+                {
+                    Response::html_ok(path, self.handle_firmware_custom_path(sub_path).await)
+                }
+
+                // Everything else - redirect to base WWW URL.
                 _ => return Response::redirect(path, "/www/"),
             };
             return response.no_cache();
@@ -290,44 +317,67 @@ impl Server {
             // Override the response format to JSON
             let response_format = Some(ContentType::Json);
 
-            let (rest_type, clean_path) = if let Some(target_path) =
-                api_path.strip_prefix("/target")
-            {
-                (Rest::Target, target_path)
-            } else if let Some(raw_path) = api_path.strip_prefix("/raw") {
-                (Rest::Raw, raw_path)
-            } else if let Some(raw_path) = api_path.strip_prefix("/config/swd") {
-                (Rest::SwdConfig, raw_path)
-            } else if let Some(raw_path) = api_path.strip_prefix("/config/net") {
-                return self
-                    .rest_config_net(response_format, method, raw_path, body.map(String::from))
-                    .await;
-            } else if let Some(raw_path) = api_path.strip_prefix("/reboot") {
-                return self.handle_reboot(response_format, path, raw_path, method);
-            } else if let Some(raw_path) = api_path.strip_prefix("/rtt") {
-                return self
-                    .handle_rtt(
+            // Main REST router
+            let (rest_type, clean_path) = match () {
+                _ if let Some(target_path) = api_path.strip_prefix("/target") => {
+                    (Rest::Target, target_path)
+                }
+                _ if let Some(raw_path) = api_path.strip_prefix("/raw") => (Rest::Raw, raw_path),
+                _ if let Some(raw_path) = api_path.strip_prefix("/config/swd") => {
+                    (Rest::SwdConfig, raw_path)
+                }
+                _ if let Some(raw_path) = api_path.strip_prefix("/config/net") => {
+                    return self
+                        .rest_config_net(response_format, method, raw_path, body.map(String::from))
+                        .await;
+                }
+                _ if let Some(raw_path) = api_path.strip_prefix("/reboot") => {
+                    return self.handle_reboot(response_format, path, raw_path, method);
+                }
+                _ if let Some(raw_path) = api_path.strip_prefix("/rtt") => {
+                    return self
+                        .handle_rtt(
+                            response_format,
+                            path,
+                            raw_path,
+                            method,
+                            body.map(String::from),
+                        )
+                        .await;
+                }
+                _ if let Some(firmware_path) = api_path.strip_prefix("/firmware/") => {
+                    return self
+                        .handle_firmware_rest(
+                            response_format,
+                            method,
+                            firmware_path,
+                            body.map(String::from),
+                        )
+                        .await;
+                }
+                _ => {
+                    return Response::status_code(
                         response_format,
-                        path,
-                        raw_path,
-                        method,
-                        body.map(String::from),
-                    )
-                    .await;
-            } else {
-                return Response::status_code(response_format, Some(path), StatusCode::NotFound);
+                        Some(path),
+                        StatusCode::NotFound,
+                    );
+                }
             };
 
             // If we reach here, we need to send a command to the Target -
             // build it
-            let cmd =
-                match Command::from_rest(rest_type, method, clean_path, body.map(String::from)) {
-                    Ok(cmd) => cmd,
-                    Err(e) => return Response::error(response_format, path, e),
-                };
+            let cmd = match TargetCommand::from_rest(
+                rest_type,
+                method,
+                clean_path,
+                body.map(String::from),
+            ) {
+                Ok(cmd) => cmd,
+                Err(e) => return Response::error(response_format, path, e),
+            };
 
             // Send it
-            let response = self.handle_command(cmd).await;
+            let response = self.handle_target_command(cmd).await;
             return Response::target_response(path, response).no_cache();
         }
 
@@ -337,24 +387,52 @@ impl Server {
 
     // Handles commands by sending to the Target and returning the response.
     // Returns a TargetResponse type which impls Into<Response>.
-    async fn handle_command(&self, command: Command) -> TargetResponse {
-        debug!("Command request: {command:?}");
+    async fn handle_target_command(&self, command: TargetCommand) -> TargetResponse {
+        debug!("Target command request: {command:?}");
 
         // Submit it to Target
         let request = TargetRequest {
             command,
-            response_signal: self.response_signal,
+            response_signal: self.target_response_signal,
         };
         self.target_sender.send(request).await;
 
         // Receive and return the response
-        self.response_signal.wait().await
+        self.target_response_signal.wait().await
     }
 
-    async fn get_summary_info(&self, output_fw_summary: bool) -> String {
-        let response = self.send_command(Command::FirmwareInfo).await;
-        html_summary(response.status, response.data, output_fw_summary)
+    async fn handle_firmware_command(&self, command: FirmwareCommand) -> FirmwareResponse {
+        debug!("Firmware command request: {command:?}");
+        fw_command_wait(command, self.firmware_response_signal).await
     }
+
+    // Summary information is composed of both:
+    // - Status information from Target
+    // - Firmware summary from Target
+    async fn get_summary_info(&self, output_fw_summary: bool) -> String {
+        // Get status from Target
+        let target_response = self.handle_target_command(TargetCommand::GetStatus).await;
+        let status = target_response.status.as_ref();
+
+        // If connected, retrieve Firmware summary as key-value pairs
+        let fw_kvp = if let Some(status) = status
+            && status.connected
+        {
+            let firmware_response = self
+                .handle_firmware_command(FirmwareCommand::GetSummaryKvp)
+                .await;
+            match firmware_response {
+                FirmwareResponse::Kvp(kvp) => Some(kvp),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // Build the summary
+        html_summary(target_response.status, fw_kvp, output_fw_summary)
+    }
+
     /// Handles the dashboard route.
     async fn handle_dashboard(&self) -> HtmlContent {
         page_dashboard(self.get_summary_info(true).await)
@@ -365,8 +443,20 @@ impl Server {
     }
 
     async fn handle_firmware(&self) -> HtmlContent {
-        let response = self.send_command(Command::FirmwareInfo).await;
-        page_target_firmware(response)
+        let fw_info = match self
+            .handle_firmware_command(FirmwareCommand::GetFullHtml)
+            .await
+        {
+            FirmwareResponse::Html { status, body } => {
+                if status == StatusCode::Ok {
+                    body
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        page_target_firmware(fw_info)
     }
 
     async fn handle_target_update(&self) -> HtmlContent {
@@ -384,9 +474,99 @@ impl Server {
         page_info(flash_size_bytes)
     }
 
+    // Requires status from Target
     async fn handle_settings(&self) -> HtmlContent {
-        let response = self.send_command(Command::FirmwareInfo).await;
-        page_settings(response).await
+        let target_response = self.handle_target_command(TargetCommand::GetStatus).await;
+        page_settings(target_response.status).await
+    }
+
+    // Retrieves custom firmware buttons from Firmware, adds the appropriate
+    // paths, and returns as JSON.  This is used by the javascript in
+    // [`HtmlContent::footer()`]
+    async fn handle_fw_buttons(&self, path: &str) -> Response {
+        let buttons = match self
+            .handle_firmware_command(FirmwareCommand::GetButtons)
+            .await
+        {
+            FirmwareResponse::Buttons(buttons) => buttons,
+            _ => vec![],
+        };
+
+        // Add "/www/fw-buttons/" to each path
+        let buttons: Vec<_> = buttons
+            .into_iter()
+            .map(|mut button| {
+                button.path = format!("/www/firmware/{}", button.path);
+                button
+            })
+            .collect();
+
+        // Turn it into JSON
+        let json = serde_json::json!({
+            "buttons": buttons
+        });
+
+        Response::json(path, json, StatusCode::Ok)
+    }
+
+    // Passes URL to the custom firmware handler
+    async fn handle_firmware_custom_path(&self, path: &str) -> HtmlContent {
+        // Build the command
+        let command = FirmwareCommand::HandleWww {
+            method: Method::Get,
+            path: path.to_string(),
+            body: None,
+        };
+
+        // Send the command, with a timeout
+        let (status_code, html) =
+            match with_timeout(FIRMWARE_TIMEOUT, self.handle_firmware_command(command)).await {
+                Err(TimeoutError) => (StatusCode::Timeout, None),
+                Ok(FirmwareResponse::Html { status, body }) => (status, body),
+                Ok(_) => (StatusCode::InternalServerError, None),
+            };
+
+        // Create the page
+        page_firmware_custom(status_code, html)
+    }
+
+    // Passes REST call to custom firmware handler
+    async fn handle_firmware_rest(
+        &self,
+        response_format: Option<ContentType>,
+        method: Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Response {
+        // Parse the body as JSON
+        let json = match parse_json_body(body) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to parse JSON body: {e:?}");
+                return Response::status_code(response_format, Some(path), StatusCode::BadRequest);
+            }
+        };
+
+        // Build the command
+        let command = FirmwareCommand::HandleRest {
+            method,
+            path: path.to_string(),
+            body: json,
+        };
+
+        // Send the command, with a timeout
+        let (status_code, json) =
+            match with_timeout(FIRMWARE_TIMEOUT, self.handle_firmware_command(command)).await {
+                Err(TimeoutError) => (StatusCode::Timeout, None),
+                Ok(FirmwareResponse::Json { status, body }) => (status, body),
+                Ok(FirmwareResponse::Error(error)) => (
+                    StatusCode::InternalServerError,
+                    Some(serde_json::json!({"error": error.to_string()})),
+                ),
+                Ok(_) => (StatusCode::InternalServerError, None),
+            };
+
+        Response::json(path, json, status_code)
     }
 
     async fn handle_rtt(
@@ -399,14 +579,14 @@ impl Server {
     ) -> Response {
         match (method, raw_path) {
             (Method::Get, "/data") => {
-                // Return all of the receive RTT data
+                // Return all of the received RTT data
                 let cmd = RttCommand::Read { max: 256 };
                 rtt_command(cmd, self.rtt_rsp_ch.sender()).await;
                 match self.rtt_rsp_ch.receiver().receive().await {
                     Ok(rtt_rsp) => match rtt_rsp {
                         RttResponse::Data { data } => {
                             let hex_data: Vec<String> =
-                                data.iter().map(|&b| format!("0x{:02X}", b)).collect();
+                                data.iter().map(|&b| format!("0x{b:02X}")).collect();
                             let response_data = serde_json::json!({"data": hex_data});
                             Response::json(path, response_data, StatusCode::Ok)
                         }
@@ -417,6 +597,14 @@ impl Server {
                             StatusCode::InternalServerError,
                         ),
                     },
+                    Err(RttError::Stopped) => {
+                        trace!("RTT reader stopped");
+                        Response::status_code(
+                            response_format,
+                            Some(path),
+                            StatusCode::ServiceUnavailable,
+                        )
+                    }
                     Err(e) => {
                         error!("Failed to get RTT data: {e:?}");
                         Response::status_code(
@@ -446,9 +634,9 @@ impl Server {
                 name: "Connection",
                 value: "close",
             }]);
-            return response;
+            response
         } else {
-            return Response::status_code(response_format, Some(path), StatusCode::NotFound);
+            Response::status_code(response_format, Some(path), StatusCode::NotFound)
         }
     }
 
@@ -505,15 +693,6 @@ impl Server {
             }
         }
     }
-
-    async fn send_command(&self, command: Command) -> TargetResponse {
-        let request = TargetRequest {
-            command,
-            response_signal: self.response_signal,
-        };
-        self.target_sender.send(request).await;
-        self.response_signal.wait().await
-    }
 }
 
 /// Starts the HTTP server tasks, if the `httpd` feature is enabled.
@@ -535,61 +714,73 @@ pub(crate) async fn start(
         const_assert_eq!(WEB_TASK_POOL_SIZE, 4);
         #[cfg(feature = "httpd")]
         const_assert_eq!(crate::NUM_SOCKETS_HTTPD, WEB_TASK_POOL_SIZE);
-        let response_signal =
+        let target_response_signal =
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
+        let firmware_response_signal =
+            make_static!(Signal::<CriticalSectionRawMutex, FirmwareResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
         let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
-            response_signal,
+            target_response_signal,
+            firmware_response_signal,
             rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
         spawner.must_spawn(task(3, *net_stack, server));
 
-        let response_signal =
+        let target_response_signal =
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
+        let firmware_response_signal =
+            make_static!(Signal::<CriticalSectionRawMutex, FirmwareResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
         let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
-            response_signal,
+            target_response_signal,
+            firmware_response_signal,
             rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
-        spawner.must_spawn(task(2, *net_stack, server));
+        spawner.must_spawn(task(3, *net_stack, server));
 
-        let response_signal =
+        let target_response_signal =
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
+        let firmware_response_signal =
+            make_static!(Signal::<CriticalSectionRawMutex, FirmwareResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
         let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
-            response_signal,
+            target_response_signal,
+            firmware_response_signal,
             rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
-        spawner.must_spawn(task(1, *net_stack, server));
+        spawner.must_spawn(task(3, *net_stack, server));
 
-        let response_signal =
+        let target_response_signal =
             make_static!(Signal::<CriticalSectionRawMutex, TargetResponse>::new());
+        let firmware_response_signal =
+            make_static!(Signal::<CriticalSectionRawMutex, FirmwareResponse>::new());
         let header_buffer = make_static!([0; HTTPD_HEADER_BUF_SIZE]);
         let body_buffer = make_static!([0; HTTPD_BODY_BUF_SIZE]);
         let rtt_rsp_ch = make_static!(Channel::new());
         let server = make_static!(Server::new(
             target_sender,
-            response_signal,
+            target_response_signal,
+            firmware_response_signal,
             rtt_rsp_ch,
             header_buffer,
             body_buffer
         ));
-        spawner.must_spawn(task(0, *net_stack, server));
+        spawner.must_spawn(task(3, *net_stack, server));
     } else {
         info!("Note:  HTTP server not started - 'httpd' feature not enabled");
     }

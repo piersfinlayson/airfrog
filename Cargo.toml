@@ -23,10 +23,10 @@ edition = "2024"
 [dependencies]
 
 [dev-dependencies]
-airfrog-core = "0.1.1"
-airfrog-swd = { version = "0.1.1" }
-airfrog-bin = "0.1.1"
-airfrog-util = "0.1.1"
+airfrog-core = "0.1.2"
+airfrog-swd = { version = "0.1.2" }
+airfrog-bin = "0.1.2"
+airfrog-util = "0.1.2"
 
 esp-bootloader-esp-idf = "0.1"
 esp-hal = { version = "=1.0.0-rc.0", features = [
@@ -40,12 +40,12 @@ esp-backtrace = { version = "0.17.0", features = [
   "panic-handler",
   "println",
 ] }
-esp-println = { version = "0.15", features = [ "esp32c3" ] }
+esp-println = { version = "0.15", features = [ "esp32c3", "log-04" ] }
 critical-section = "1.2"
-embassy-executor = { version = "0.7.0", features = [ "nightly" ] }
-embassy-sync = { version = "0.7.0" }
-embassy-time = { version = "0.4.0" }
-embassy-futures = { version = "0.1.1" }
+embassy-executor = { version = "0.7", features = [ "nightly" ] }
+embassy-sync = { version = "0.7.2" }
+embassy-time = { version = "0.5.0" }
+embassy-futures = { version = "0.1.2" }
 esp-hal-embassy = { version = "0.9", features = [ "esp32c3" ] }
 esp-wifi = { version = "0.15", features = [
   "builtin-scheduler",
@@ -57,7 +57,7 @@ log = "0.4.27"
 
 rust-mqtt = { version = "0.3", default-features = false }
 static_cell = { version = "2.1.0", features = ["nightly"] }
-embassy-net = { version = "0.7.0", features = [
+embassy-net = { version = "0.7", features = [
   "dhcpv4",
   "medium-ethernet",
   "tcp",

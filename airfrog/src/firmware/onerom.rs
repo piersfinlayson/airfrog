@@ -4,139 +4,86 @@
 
 //! airfrog - One ROM Firmware handling
 
+use airfrog_core::Mcu;
+use airfrog_rpc::io::{Reader, Writer};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use async_trait::async_trait;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+use serde_json::Value;
 
-use sdrr_fw_parser::{Parser, Reader as SdrrReader, Sdrr, SdrrInfo, SdrrRuntimeInfo, SdrrServe};
+use sdrr_fw_parser::{Parser, Sdrr as OneRom, SdrrInfo, SdrrRuntimeInfo, SdrrServe};
 
-use crate::firmware::AF_FW_TYPE_KEY;
-use crate::firmware::{FormatterError, FwError, FwHandler, FwHandlerInfo, FwInfo, JsonToHtml};
-use airfrog_core::Mcu;
+use crate::firmware::Error;
+use crate::firmware::types::{Decoder, Firmware, FirmwareType, WwwButton};
+use crate::http::{Method, StatusCode};
 
-pub(crate) const AF_FW_TYPE: &str = "SdrrInfo";
+const FIRMWARE_TYPE: FirmwareType = FirmwareType::OneRom;
 
-/// SDRR firmware handler information
-pub struct SdrrHandlerInfo;
-
-impl FwHandlerInfo for SdrrHandlerInfo {
-    /// Returns the name/identifier of this firmware type
-    fn name() -> &'static str {
-        "One ROM"
-    }
-
-    /// Returns whether this handler supports the given MCU
-    fn supports_mcu(mcu: &Mcu) -> bool {
-        mcu.is_stm32f4()
-    }
+pub struct OneRomDecoder<R: Reader> {
+    _marker: core::marker::PhantomData<R>,
 }
 
-/// The SDRR firmware handler
-pub struct SdrrHandler<R: SdrrReader> {
-    parser: Parser<R>,
-}
-
-impl<R: SdrrReader> FwHandler<R> for SdrrHandler<R> {
-    fn new(reader: R) -> Self {
-        let parser = Parser::new(reader);
-        Self { parser }
-    }
-
-    async fn detect(&mut self) -> bool {
-        self.parser.detect().await
-    }
-
-    /// Attempts to detect if this firmware type is present on the target
-    /// Returns true if detected, false otherwise
-    async fn parse_info(&mut self) -> Result<Box<dyn FwInfo>, FwError<R::Error>> {
-        let sdrr = self.parser.parse().await;
-        Ok(Box::new(FwSdrr(sdrr)))
-    }
-}
-
-pub struct FwSdrr(Sdrr);
-
-impl FwInfo for FwSdrr {
-    fn summary(&self) -> serde_json::Value {
-        let content = &self.0;
-        match content.flash.as_ref() {
-            Some(flash) => {
-                serde_json::json!({
-                    "version": format!("v{}.{}.{}", flash.major_version, flash.minor_version, flash.patch_version),
-                    "build_date": flash.build_date,
-                    "hw_rev": flash.hw_rev,
-                })
-            }
-            None => {
-                serde_json::json!({
-                    "error": "No flash content found in SDRR firmware"
-                })
-            }
+impl<R: Reader> OneRomDecoder<R> {
+    pub const fn new() -> Self {
+        Self {
+            _marker: core::marker::PhantomData,
         }
     }
 
-    fn details(&self) -> serde_json::Value {
-        let content = &self.0;
-        let mut value = serde_json::json!(content);
-        value[AF_FW_TYPE_KEY] = AF_FW_TYPE.into();
-        value
+    pub fn parser<'a>(&self, mcu: &Mcu, reader: &'a mut R) -> Parser<'a, R> {
+        let base_flash_address = match mcu {
+            Mcu::Rp(_) => 0x1000_0000,
+            Mcu::Stm32(_) => 0x0800_0000,
+            _ => unreachable!(),
+        };
+        let base_ram_address = 0x2000_0000;
+        Parser::with_base_flash_address(reader, base_flash_address, base_ram_address)
     }
 }
 
-#[derive(Debug, Default)]
-pub struct JsonToHtmler {}
-
-impl JsonToHtmler {
-    pub fn get_sdrr(&self, data: serde_json::Value) -> Result<Sdrr, FormatterError> {
-        if !self.can_handle(&data) {
-            return Err(FormatterError::JsonToHtml(
-                "Unsupported firmware data".to_string(),
-            ));
-        }
-
-        match serde_json::from_value(data) {
-            Ok(info) => Ok(info),
-            Err(e) => Err(FormatterError::JsonToHtml(format!(
-                "Failed to parse SDRR info: {e}"
-            ))),
-        }
+#[async_trait(?Send)]
+impl<R: Reader, W: Writer> Decoder<R, W> for OneRomDecoder<R> {
+    fn fw_type(&self) -> FirmwareType {
+        FIRMWARE_TYPE
     }
 
-    pub fn _get_flash_info(&self, data: serde_json::Value) -> Result<SdrrInfo, FormatterError> {
-        let sdrr = self.get_sdrr(data)?;
-        if let Some(flash_info) = sdrr.flash {
-            Ok(flash_info)
+    async fn detect(&self, mcu: &Mcu, reader: &mut R) -> Option<FirmwareType> {
+        if !mcu.is_stm32f4() && !mcu.is_rp() {
+            return None;
+        }
+
+        debug!("Info:  Detecting One ROM firmware...");
+
+        // Use the One ROM firmware parser to detect One ROM
+        if self.parser(mcu, reader).detect().await {
+            Some(FIRMWARE_TYPE)
         } else {
-            Err(FormatterError::JsonToHtml(
-                "SDRR firmware information incomplete".to_string(),
-            ))
+            None
         }
     }
 
-    pub fn _get_ram_info(
-        &self,
-        data: serde_json::Value,
-    ) -> Result<SdrrRuntimeInfo, FormatterError> {
-        let sdrr = self.get_sdrr(data)?;
-        if let Some(ram_info) = sdrr.ram {
-            Ok(ram_info)
-        } else {
-            Err(FormatterError::JsonToHtml(
-                "SDRR runtime information incomplete".to_string(),
-            ))
+    async fn decode(&self, mcu: &Mcu, reader: &mut R) -> Result<Box<dyn Firmware<R, W>>, Error> {
+        if !mcu.is_stm32f4() && !mcu.is_rp() {
+            return Err(Error::UnknownFirmware);
         }
-    }
 
-    fn push_table_row(&self, item: &str, output: &str, html: &mut String) {
-        html.push_str(&format!(
-            r#"<tr>
-<td class="label-col"><strong>{item}:</strong></td>
-<td>{output}</td>
-</tr>"#,
-        ));
-    }
+        // Use the One ROM Lab firmware parser to retrieve the firmware
+        // information
+        let lab = self.parser(mcu, reader).parse().await;
 
+        Ok(Box::new(OneRomFirmware { info: lab }))
+    }
+}
+
+pub struct OneRomFirmware {
+    info: OneRom,
+}
+
+impl OneRomFirmware {
     fn get_current_rom_info(&self, fw_info: &SdrrInfo, ram_info: &SdrrRuntimeInfo) -> String {
         let set_index = ram_info.rom_set_index as usize;
 
@@ -160,85 +107,91 @@ impl JsonToHtmler {
     }
 }
 
-#[allow(clippy::collapsible_if)]
-impl JsonToHtml for JsonToHtmler {
-    fn can_handle(&self, data: &serde_json::Value) -> bool {
-        data.get("_af_fw_type").is_some_and(|t| t == "SdrrInfo")
+#[async_trait(?Send)]
+impl<R: Reader, W: Writer> Firmware<R, W> for OneRomFirmware {
+    fn fw_type(&self) -> FirmwareType {
+        FIRMWARE_TYPE
     }
 
-    fn summary(&self, data: serde_json::Value) -> Result<String, FormatterError> {
-        let sdrr = self.get_sdrr(data)?;
-        let fw_info = sdrr.flash;
-        let ram_info = sdrr.ram;
-
-        let mut html = String::with_capacity(1024);
-
-        let item = "Firmware";
-        let output = "One ROM";
-        self.push_table_row(item, output, &mut html);
-
-        let item = "Version";
-        let output = if let Some(fw_info) = &fw_info {
-            format!(
-                "V{}.{}.{}</td>",
-                fw_info.major_version, fw_info.minor_version, fw_info.patch_version
-            )
-        } else {
-            "unknown".to_string()
-        };
-        self.push_table_row(item, &output, &mut html);
-
-        let item = "Serving ROM/set";
-        let output = if let Some(ram_info) = &ram_info {
-            if let Some(fw_info) = &fw_info {
-                self.get_current_rom_info(fw_info, ram_info).to_string()
-            } else {
-                format!("{} - unknown image", ram_info.rom_set_index)
-            }
-        } else {
-            "unknown".to_string()
-        };
-        self.push_table_row(item, &output, &mut html);
-
-        let item = "Bytes served";
-        let output = if let Some(ram_info) = &ram_info {
-            if ram_info.count_rom_access > 0 {
-                format!("{}", ram_info.last_parsed_access_count)
-            } else {
-                "unavailable".to_string()
-            }
-        } else {
-            "unknown".to_string()
-        };
-        self.push_table_row(item, &output, &mut html);
-
-        let item = "Emulating";
-        let output = if let Some(fw_info) = &fw_info
-            && let Some(pins) = &fw_info.pins
-        {
-            format!("{} pin ROM", pins.rom_pins)
-        } else {
-            "unknown ROM".to_string()
-        };
-        self.push_table_row(item, &output, &mut html);
-
-        let item = "Hardware Revision";
-        let output = if let Some(fw_info) = &fw_info
-            && let Some(hw_rev) = &fw_info.hw_rev
-        {
-            hw_rev.clone()
-        } else {
-            "unknown".to_string()
-        };
-        self.push_table_row(item, &output, &mut html);
-
-        Ok(html)
+    fn rtt_cb_address(&self) -> Option<u32> {
+        #[allow(clippy::bind_instead_of_map)]
+        self.info
+            .flash
+            .as_ref()
+            .and_then(|flash| flash.extra_info.as_ref())
+            .and_then(|info| {
+                if info.rtt_ptr != 0 {
+                    Some(info.rtt_ptr)
+                } else {
+                    None
+                }
+            })
     }
 
-    fn complete(&self, data: serde_json::Value) -> Result<String, FormatterError> {
-        let sdrr = self.get_sdrr(data)?;
-        let fw_info = sdrr.flash;
-        let ram_info = sdrr.ram;
+    fn get_summary_kvp(&self) -> Result<Vec<(String, String)>, Error> {
+        let mut kvp = Vec::new();
+
+        // Get summary information from flash
+        if let Some(flash) = self.info.flash.as_ref() {
+            kvp.push((
+                "Version".to_string(),
+                format!(
+                    "v{}.{}.{}",
+                    flash.major_version, flash.minor_version, flash.patch_version
+                ),
+            ));
+            kvp.push((
+                "Hardware Revision".to_string(),
+                flash
+                    .hw_rev
+                    .as_ref()
+                    .unwrap_or(&"Unknown".to_string())
+                    .to_string(),
+            ));
+            kvp.push((
+                "Emulating".to_string(),
+                if let Some(pins) = flash.pins.as_ref() {
+                    format!("{} pin ROM", pins.rom_pins)
+                } else {
+                    "unknown ROM".to_string()
+                },
+            ));
+        } else {
+            kvp.push(("Version".to_string(), "Unknown".to_string()));
+            kvp.push(("Hardware Revision".to_string(), "Unknown".to_string()));
+            kvp.push(("Emulating".to_string(), "unknown ROM".to_string()));
+        }
+
+        if let Some(flash) = &self.info.flash.as_ref()
+            && let Some(ram) = &self.info.ram.as_ref()
+        {
+            kvp.push((
+                "Serving ROM/set".to_string(),
+                self.get_current_rom_info(flash, ram).to_string(),
+            ));
+        } else {
+            kvp.push(("Serving ROM/set".to_string(), "unavailable".to_string()));
+        }
+
+        if let Some(ram) = self.info.ram.as_ref() {
+            kvp.push((
+                "Bytes served".to_string(),
+                if ram.count_rom_access > 0 {
+                    format!("{}", ram.last_parsed_access_count)
+                } else {
+                    "unavailable".to_string()
+                },
+            ));
+        } else {
+            kvp.push(("Bytes served".to_string(), "unavailable".to_string()));
+        }
+
+        Ok(kvp)
+    }
+
+    fn get_full_html(&self) -> Result<(StatusCode, Option<String>), Error> {
+        let fw_info = self.info.flash.as_ref();
+        let ram_info = self.info.ram.as_ref();
 
         let mut html = String::with_capacity(8192);
 
@@ -565,6 +518,32 @@ impl JsonToHtml for JsonToHtmler {
             }
         }
 
-        Ok(html)
+        Ok((StatusCode::Ok, Some(html)))
+    }
+
+    fn get_buttons(&self) -> Result<Vec<WwwButton>, Error> {
+        Err(Error::NotImplemented)
+    }
+
+    async fn handle_rest(
+        &self,
+        _method: Method,
+        _path: String,
+        _body: Option<Value>,
+        _reader: &mut R,
+        _writer: &mut W,
+    ) -> Result<(StatusCode, Option<Value>), Error> {
+        Err(Error::NotImplemented)
+    }
+
+    async fn handle_www(
+        &self,
+        _method: Method,
+        _path: String,
+        _body: Option<String>,
+        _reader: &mut R,
+        _writer: &mut W,
+    ) -> Result<(StatusCode, Option<String>), Error> {
+        Err(Error::NotImplemented)
     }
 }

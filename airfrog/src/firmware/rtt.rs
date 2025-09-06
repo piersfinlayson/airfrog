@@ -22,14 +22,9 @@ use crate::target::{
     Response as TargetResponse,
 };
 
-static RTT_CMD_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    (
-        Command,
-        Option<Sender<CriticalSectionRawMutex, Result<Response, Error>, 1>>,
-    ),
-    2,
-> = Channel::new();
+type RspCh = Option<Sender<'static, CriticalSectionRawMutex, Result<Response, Error>, 1>>;
+type ChArg = (Command, RspCh);
+static RTT_CMD_CHANNEL: Channel<CriticalSectionRawMutex, ChArg, 2> = Channel::new();
 static RTT_CTRL_SIGNAL: Signal<CriticalSectionRawMutex, Control> = Signal::new();
 
 const BUFFER_SIZE: usize = 4096;
@@ -38,8 +33,8 @@ const MAX_BYTES_PER_READ: usize = 256;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum State {
-    Start,
-    Stop,
+    Started,
+    Stopped,
 }
 
 #[derive(PartialEq, Eq)]
@@ -327,7 +322,7 @@ impl Rtt {
         target_response_signal: &'static Signal<CriticalSectionRawMutex, TargetResponse>,
     ) -> Self {
         Self {
-            state: State::Stop,
+            state: State::Stopped,
             rtt_cb: None,
             rtt_up_buf: None,
             local_buf: LocalBuf::default(),
@@ -338,16 +333,22 @@ impl Rtt {
 
     // Reads bytes from the target
     async fn read_bytes(&mut self, location: u32, num_bytes: usize) -> Result<Vec<u8>, Error> {
-        if num_bytes == 0 || !num_bytes.is_multiple_of(4) {
-            warn!("Error: Internal error requested invalid number of bytes {num_bytes}");
-            return Err(Error::Internal);
+        if num_bytes == 0 {
+            return Ok(Vec::new());
         }
 
-        // Build and send the request
+        // Calculate aligned boundaries
+        let start_aligned = location & !3;
+        let end_aligned = (location + num_bytes as u32 + 3) & !3;
+        let aligned_bytes = (end_aligned - start_aligned) as usize;
+
+        // Read aligned chunk
         let command = TargetCommand::ReadMemBulk {
-            addr: format!("{location:#010X}"),
-            count: num_bytes / 4,
+            addr: format!("{start_aligned:#010X}"),
+            count: aligned_bytes / 4,
         };
+
+        // Send the request
         let response_signal = self.target_response_signal;
         let request = TargetRequest {
             command,
@@ -368,8 +369,9 @@ impl Rtt {
             bytes.extend_from_slice(&word.to_le_bytes());
         }
 
-        // Return it
-        Ok(bytes)
+        // Extract only the requested bytes
+        let start_offset = (location - start_aligned) as usize;
+        Ok(bytes[start_offset..start_offset + num_bytes].to_vec())
     }
 
     async fn read_word(&mut self, location: u32) -> Result<u32, Error> {
@@ -446,10 +448,10 @@ impl Rtt {
         // Only store the CB/buf now we've succeeded
         self.rtt_cb = Some(rtt_cb);
         self.rtt_up_buf = Some(rtt_up_buf);
-        if self.state != State::Start {
+        if self.state != State::Started {
             // If we're not already started, set the state to Start
             info!("Info:  RTT started");
-            self.state = State::Start;
+            self.state = State::Started;
         } else {
             debug!("Info:  RTT re-started at {location:#010X}");
         }
@@ -458,11 +460,14 @@ impl Rtt {
     }
 
     fn stop(&mut self) {
+        if self.state != State::Stopped {
+            info!("Info:  RTT stopped");
+            self.state = State::Stopped;
+        } else {
+            trace!("Info:  RTT already stopped");
+        }
         self.rtt_cb = None;
         self.rtt_up_buf = None;
-        self.state = State::Stop;
-
-        info!("Info:  RTT stopped");
     }
 
     async fn handle_command(
@@ -473,8 +478,8 @@ impl Rtt {
         let response = match command {
             Command::_GetState => Ok(Response::State { state: self.state }),
             Command::Read { max } => match self.state {
-                State::Stop => Err(Error::Stopped),
-                State::Start => {
+                State::Stopped => Err(Error::Stopped),
+                State::Started => {
                     let max = core::cmp::min(max, MAX_BYTES_PER_READ);
                     let mut data = vec![0u8; max];
                     let bytes_read = self.local_buf.read_data(&mut data);
@@ -493,91 +498,61 @@ impl Rtt {
     // Function to get any new RTT data from the target.
     async fn get_rtt_data_from_target(&mut self) -> Result<(), Error> {
         if self.local_buf.available_space() == 0 {
-            // No space in our local buffer, so no point reading any more data
             return Err(Error::Full);
         }
 
-        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
+        let mut stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?;
 
-        // Get current read position
+        // Check for reset
         let cur_read_pos = self.read_word(stored_buf.read_pos_field_loc()).await?;
         if cur_read_pos != stored_buf.read_pos {
-            // If the read position has changed, restart
             info!(
-                "Info:  RTT task detected potential device reset - RTT read position changed from {} to {}",
+                "RTT task detected device reset - read position changed from {} to {}",
                 stored_buf.read_pos, cur_read_pos
             );
             let location = self.rtt_cb.as_ref().ok_or(Error::Stopped)?.location;
             self.stop();
             self.start(location).await?;
-            stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?.clone();
+            stored_buf = self.rtt_up_buf.ok_or(Error::Stopped)?;
         }
 
-        // Get current write position
         stored_buf.write_pos = self.read_word(stored_buf.write_pos_field_loc()).await?;
-        trace!(
-            "Info:  RTT write/read positions: {} {}",
-            stored_buf.write_pos, stored_buf.read_pos
-        );
 
-        // No data? Done.
         if stored_buf.write_pos == stored_buf.read_pos {
             return Ok(());
         }
 
-        // Calculate available data and limit to MAX_BYTES_PER_READ bytes
-        let target_available = stored_buf.available_data();
+        let available = stored_buf.available_data();
         let space = self.local_buf.available_space();
-        let max_read = core::cmp::min(core::cmp::min(target_available, space), MAX_BYTES_PER_READ);
-        let max_read_aligned = max_read & !3;
+        let to_read = core::cmp::min(core::cmp::min(available, space), MAX_BYTES_PER_READ);
 
-        if max_read_aligned == 0 {
-            return Ok(());
-        }
-
-        // Read only the data we need (handle wraparound)
-        let available_data = if stored_buf.write_pos > stored_buf.read_pos {
-            // Contiguous read
-            let bytes_to_read = core::cmp::min(
-                max_read_aligned,
-                (stored_buf.write_pos - stored_buf.read_pos) as usize,
-            );
-            self.read_bytes(stored_buf.cur_read_loc(), bytes_to_read)
-                .await?
+        let data = if stored_buf.write_pos > stored_buf.read_pos {
+            // Contiguous
+            self.read_bytes(stored_buf.cur_read_loc(), to_read).await?
         } else {
-            // Wrapped read
+            // Wrapped - read both chunks and concatenate
             let first_chunk = (stored_buf.size - stored_buf.read_pos) as usize;
-            if max_read_aligned <= first_chunk {
-                // All data fits in first chunk
-                self.read_bytes(stored_buf.cur_read_loc(), max_read_aligned)
-                    .await?
-            } else {
-                // Need both chunks
-                let mut data = self
-                    .read_bytes(stored_buf.cur_read_loc(), first_chunk)
+            let first_size = core::cmp::min(to_read, first_chunk);
+            let mut data = self
+                .read_bytes(stored_buf.cur_read_loc(), first_size)
+                .await?;
+
+            if first_size < to_read {
+                let mut second = self
+                    .read_bytes(stored_buf.data_ptr, to_read - first_size)
                     .await?;
-                let second_chunk = max_read_aligned - first_chunk;
-                let mut second_data = self.read_bytes(stored_buf.data_ptr, second_chunk).await?;
-                data.append(&mut second_data);
-                data
+                data.append(&mut second);
             }
+            data
         };
 
-        debug!("Info:  RTT data available: {} bytes", available_data.len());
+        debug!("Info:  RTT data available: {} bytes", data.len());
 
-        // Copy what we can fit
-        let space = self.local_buf.available_space();
-        let to_copy = core::cmp::min(available_data.len(), space);
-
-        if to_copy > 0 {
-            self.local_buf.write_data(&available_data[..to_copy]);
-
-            // Update read position by how much we actually consumed
-            stored_buf.read_pos = (stored_buf.read_pos + to_copy as u32) % stored_buf.size;
-            self.write_word(stored_buf.read_pos_field_loc(), stored_buf.read_pos)
-                .await?;
-            self.rtt_up_buf = Some(stored_buf);
-        }
+        self.local_buf.write_data(&data);
+        stored_buf.read_pos = (stored_buf.read_pos + data.len() as u32) % stored_buf.size;
+        self.write_word(stored_buf.read_pos_field_loc(), stored_buf.read_pos)
+            .await?;
+        self.rtt_up_buf = Some(stored_buf);
 
         Ok(())
     }
@@ -597,7 +572,7 @@ pub async fn rtt_task(
     let mut error_state = false;
     loop {
         // Wait for a command, and, if we're running, data from the target
-        let command = if rtt.state == State::Stop {
+        let command = if rtt.state == State::Stopped {
             // When stopped, listen for both data commands (to reject) and control (to start)
             match select(RTT_CMD_CHANNEL.receive(), RTT_CTRL_SIGNAL.wait()).await {
                 Either::First(cmd) => Some(cmd),
@@ -617,11 +592,9 @@ pub async fn rtt_task(
                     info!("Error: Hit error receiving RTT data {e:?}");
                     error_state = true;
                 }
-            } else {
-                if error_state {
-                    info!("Info:  RTT data received successfully");
-                    error_state = false;
-                }
+            } else if error_state {
+                info!("Info:  RTT data received successfully");
+                error_state = false;
             }
 
             match select3(

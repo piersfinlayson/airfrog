@@ -361,7 +361,7 @@ impl Response {
         self
     }
 
-    pub fn static_file(path: &str, file: StaticFile) -> Self {
+    pub fn static_file(path: &str, file: &StaticFile) -> Self {
         let headers = if !file.headers.is_empty() {
             Some(
                 file.headers
@@ -392,7 +392,7 @@ impl Response {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusCode {
     Ok = 200,
     Found = 302,

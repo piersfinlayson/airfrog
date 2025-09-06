@@ -113,9 +113,6 @@ pub enum Command {
         post_level: LineState,
         count: u32,
     },
-
-    // WWW
-    FirmwareInfo,
 }
 
 impl Command {

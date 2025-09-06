@@ -13,7 +13,7 @@ use airfrog_swd::protocol::{Speed, Version};
 use crate::AirfrogError;
 use crate::target::Settings;
 
-#[derive(serde::Serialize, Default)]
+#[derive(Debug, serde::Serialize, Default)]
 pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,
@@ -73,9 +73,6 @@ pub struct Status {
 
     // MCU type of the target device, if available.
     pub mcu: Option<String>,
-
-    // Firmware type of the target device, if available.
-    pub firmware: Option<String>,
 
     // Settings for the target.
     pub settings: Settings,
