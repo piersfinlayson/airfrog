@@ -115,6 +115,8 @@ impl<R: Reader + 'static, W: Writer + 'static> Firmware<R, W> for OneRomLabFirmw
     fn get_summary_kvp(&self) -> Result<Vec<(String, String)>, Error> {
         let mut kvp = Vec::new();
 
+        kvp.push(("Firmware".to_string(), "One ROM Lab".to_string()));
+
         // Get summary information from flash
         if let Some(flash) = &self.info.flash.as_ref() {
             kvp.push((
