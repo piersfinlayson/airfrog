@@ -1,5 +1,7 @@
 # Airfrog
 
+DEPRECATED - See [airfrog-v2](https://github.com/piersfinlayson/airfrog-v2).
+
 [piers.rocks/u/airfrog](https://piers.rocks/u/airfrog)
 
 Tiny wireless co-processor/programmer/debugger for ARM.  Uses $3 WiFi module.  Written in Rust.
